@@ -5,7 +5,6 @@ import numpy as np
 from datetime import datetime
 
 # --- SESSİON STATE (HAFIZA) BAŞLATMA ---
-# Sayfa her yenilendiğinde verilerin kaybolmasını engeller
 if "tarama_durumu" not in st.session_state:
     st.session_state.tarama_durumu = False
 if "sonuclar" not in st.session_state:
@@ -58,7 +57,7 @@ preset_options = {
     "Kendi Seçimim (Standart)": ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"],
     "BIST Sanayi & Otomotiv": ["FROTO.IS", "TOASO.IS", "TUPRS.IS", "EREGL.IS", "DOAS.IS", "ASELS.IS"],
     "ABD Teknoloji (Mag 7)": ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA"],
-    "Değerli Madenler (Emtia)": ["GLD", "SLV", "CPER", "PALL"]
+    "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL"]
 }
 
 secilen_kategori = st.sidebar.selectbox("Hızlı Tarama Profili", list(preset_options.keys()))
@@ -68,7 +67,7 @@ selected_tickers = st.sidebar.multiselect("Takip Edilecek Varlıklar", default_t
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("➕ Anlık Hisse Ekle")
-ek_hisse_input = st.sidebar.text_input("Eklemek istediğiniz kod(lar):", placeholder="Örn: AKBNK.IS, INTC")
+ek_hisse_input = st.sidebar.text_input("Eklemek istediğiniz kod(lar):", placeholder="Örn: AKBNK.IS, GC=F")
 
 if ek_hisse_input:
     eklenenler = [h.strip().upper() for h in ek_hisse_input.replace(",", " ").split() if h.strip()]
@@ -85,7 +84,7 @@ def style_dataframe(row):
         color = 'background-color: rgba(192, 57, 43, 0.2)'
     return [color] * len(row)
 
-# --- 3. ANA TARAMA MOTORU (SADECE BUTONA BASILINCA HESAPLAR VE HAFIZAYA ALIR) ---
+# --- 3. ANA TARAMA MOTORU ---
 if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
     
     with st.spinner("Piyasa verileri çekiliyor, teknik göstergeler hesaplanıyor..."):
@@ -132,7 +131,7 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 sma_200 = df_long['SMA_200'].iloc[-1] if len(df_long) >= 200 and not pd.isna(df_long['SMA_200'].iloc[-1]) else bugun_kapanis
                 uzun_vade_trend = bugun_kapanis > sma_200
 
-                # Grafik için RSI Hesabı
+                # RSI Hesabı
                 delta = df_long['Close'].diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -141,7 +140,6 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 rsi = df_long['RSI'].iloc[-1]
                 if pd.isna(rsi): rsi = 50.0
                 
-                # Grafik verilerini hafıza için sakla
                 gecici_ham_veriler[ticker] = df_long[['Close', 'Volume', 'RSI']].copy()
                 
                 macd_serisi = df_long['Close'].ewm(span=12).mean() - df_long['Close'].ewm(span=26).mean()
@@ -207,6 +205,9 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 if uzun_vade_trend:
                     boga_sayisi += 1
 
+                # Görünen isim düzenlemesi (Ticker yerine şık açıklama)
+                gorunen_ad = "Ons Altın (GC=F)" if ticker == "GC=F" else ticker
+
                 aktif_kasa = bist_kasa if is_bist else nasdaq_kasa
                 risk_tutar = aktif_kasa * risk_orani
                 hisse_risk = bugun_kapanis - dinamik_stop
@@ -214,7 +215,7 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 maliyet = lot * bugun_kapanis
 
                 gecici_sonuclar.append({
-                    "Varlık": ticker,
+                    "Varlık": gorunen_ad,
                     "Fiyat": f"{bugun_kapanis:.2f} {para_birimi}",
                     "Günlük %": f"{yuzde_degisim:+.2f}%",
                     "Hacim": f"{hacim_carpan:.1f}x",
@@ -230,14 +231,13 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
             except Exception as e:
                 st.error(f"{ticker} analiz hatası: {e}")
 
-        # HESAPLANAN VERİLERİ SESSİON STATE'E KAYDET
         st.session_state.sonuclar = gecici_sonuclar
         st.session_state.ham_veriler = gecici_ham_veriler
         st.session_state.boga_sayisi = boga_sayisi
         st.session_state.alim_firsati = alim_firsati
         st.session_state.tarama_durumu = True
 
-# --- 4. ARAYÜZÜ ÇİZ (EĞER HAFIZADA VERİ VARSA) ---
+# --- 4. ARAYÜZÜ ÇİZ ---
 if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
     col1, col2, col3 = st.columns(3)
@@ -279,10 +279,12 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
     secili_grafik = st.selectbox("Grafiğini incelemek istediğiniz varlığı seçin:", [s["Varlık"] for s in st.session_state.sonuclar])
     
-    if secili_grafik in st.session_state.ham_veriler:
-        grafik_verisi = st.session_state.ham_veriler[secili_grafik]
+    # Eşleşmeyi bulabilmek için orijinal ticker sözlüğünü veya ad eşlemesini kullanıyoruz
+    aktif_ticker_anahtari = "GC=F" if "Ons Altın" in secili_grafik else secili_grafik
+    
+    if aktif_ticker_anahtari in st.session_state.ham_veriler:
+        grafik_verisi = st.session_state.ham_veriler[aktif_ticker_anahtari]
         
-        # 3 Farklı Sekme
         tab1, tab2, tab3 = st.tabs(["📉 Fiyat Hareketi (1 Yıl)", "📊 İşlem Hacmi", "⚡ RSI (Göreceli Güç Endeksi)"])
         
         with tab1:
@@ -290,7 +292,6 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
         with tab2:
             st.bar_chart(grafik_verisi['Volume'], use_container_width=True, color="#3498db")
         with tab3:
-            # Sadece RSI değerleri NaN olmayanları göster ki grafik temiz çıksın
             temiz_rsi = grafik_verisi['RSI'].dropna()
             st.line_chart(temiz_rsi, use_container_width=True, color="#e74c3c")
             st.caption("RSI 70 Üzeri: Aşırı Alım (Riskli) | RSI 30 Altı: Aşırı Satım (Fırsat)")
