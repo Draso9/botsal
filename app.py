@@ -36,7 +36,6 @@ ek_hisse_input = st.sidebar.text_input("Eklemek istediğiniz kod(lar):", placeho
 
 # Eğer kullanıcı arayüzden yeni kod yazdıysa listeye dahil et
 if ek_hisse_input:
-    # Virgül veya boşlukla ayrılmış kodları listeye çevir ve büyük harfe yap
     eklenenler = [h.strip().upper() for h in ek_hisse_input.replace(",", " ").split() if h.strip()]
     for h in eklenenler:
         if h not in selected_tickers:
@@ -66,20 +65,30 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
 
                 # 2. Günlük Veriler
                 df_long = stock.history(period="1y")
+                
+                # MultiIndex koruması
+                if isinstance(df_long.columns, pd.MultiIndex):
+                    df_long.columns = df_long.columns.droplevel(1)
+                    
                 if df_long.empty or len(df_long) < 50:
                     continue
                     
                 para_birimi = "TL" if ".IS" in ticker else "$"
                 is_bist = ".IS" in ticker
-                bugun_kapanis = df_long['Close'].iloc[-1]
-                dun_kapanis = df_long['Close'].iloc[-2]
-                yuzde_degisim = ((bugun_kapanis - dun_kapanis) / dun_kapanis) * 100
+                
+                close_series = df_long['Close'].dropna()
+                if close_series.empty:
+                    continue
+                    
+                bugun_kapanis = close_series.iloc[-1]
+                dun_kapanis = close_series.iloc[-2] if len(close_series) >= 2 else bugun_kapanis
+                yuzde_degisim = ((bugun_kapanis - dun_kapanis) / dun_kapanis) * 100 if dun_kapanis > 0 else 0.0
 
                 # İndikatörler
                 df_long['EMA_9'] = df_long['Close'].ewm(span=9, adjust=False).mean()
                 df_long['EMA_21'] = df_long['Close'].ewm(span=21, adjust=False).mean()
                 df_long['SMA_200'] = df_long['Close'].rolling(window=200).mean()
-                sma_200 = df_long['SMA_200'].iloc[-1] if len(df_long) >= 200 else bugun_kapanis
+                sma_200 = df_long['SMA_200'].iloc[-1] if len(df_long) >= 200 and not pd.isna(df_long['SMA_200'].iloc[-1]) else bugun_kapanis
                 uzun_vade_trend = bugun_kapanis > sma_200
 
                 delta = df_long['Close'].diff()
@@ -87,34 +96,39 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
                 rs = gain / loss
                 rsi = (100 - (100 / (1 + rs))).iloc[-1]
+                if pd.isna(rsi): rsi = 50.0
                 
-                macd = (df_long['Close'].ewm(span=12).mean() - df_long['Close'].ewm(span=26).mean()).iloc[-1]
-                signal = (df_long['Close'].ewm(span=12).mean() - df_long['Close'].ewm(span=26).mean()).ewm(span=9).mean().iloc[-1]
+                macd_serisi = df_long['Close'].ewm(span=12).mean() - df_long['Close'].ewm(span=26).mean()
+                macd = macd_serisi.iloc[-1] if not macd_serisi.empty else 0
+                signal = macd_serisi.ewm(span=9).mean().iloc[-1] if not macd_serisi.empty else 0
 
                 # Bollinger
                 bb_mid = df_long['Close'].rolling(window=20).mean()
                 bb_std = df_long['Close'].rolling(window=20).std()
                 bb_alt = (bb_mid - (bb_std * 2)).iloc[-1]
                 bb_ust = (bb_mid + (bb_std * 2)).iloc[-1]
+                if pd.isna(bb_alt): bb_alt = bugun_kapanis * 0.95
+                if pd.isna(bb_ust): bb_ust = bugun_kapanis * 1.05
 
                 # Hacim
-                vol_sma_20 = df_long['Volume'].rolling(window=20).mean().iloc[-1]
-                hacim_carpan = df_long['Volume'].iloc[-1] / vol_sma_20 if vol_sma_20 > 0 else 1.0
-                hacim_onay = df_long['Volume'].iloc[-1] > vol_sma_20
+                vol_sma_20 = df_long['Volume'].rolling(window=20).mean().iloc[-1] if 'Volume' in df_long else 0
+                hacim_carpan = df_long['Volume'].iloc[-1] / vol_sma_20 if vol_sma_20 and vol_sma_20 > 0 else 1.0
+                hacim_onay = df_long['Volume'].iloc[-1] > vol_sma_20 if vol_sma_20 else False
 
                 # ATR & Risk
                 high_low = df_long['High'] - df_long['Low']
                 high_close = np.abs(df_long['High'] - df_long['Close'].shift())
                 low_close = np.abs(df_long['Low'] - df_long['Close'].shift())
-                atr = np.max(pd.concat([high_low, high_close, low_close], axis=1), axis=1).rolling(14).mean().iloc[-1]
+                atr_serisi = np.max(pd.concat([high_low, high_close, low_close], axis=1), axis=1).rolling(14).mean()
+                atr = atr_serisi.iloc[-1] if not atr_serisi.empty and not pd.isna(atr_serisi.iloc[-1]) else (bugun_kapanis * 0.03)
                 
                 dinamik_stop = bugun_kapanis - (atr * 1.5)
                 hedef_1 = bugun_kapanis + (atr * 2.0)
                 hedef_2 = bugun_kapanis + (atr * 4.0)
 
                 son_bir_ay = df_long.tail(30)
-                kisa_direnc = son_bir_ay['High'].max()
-                kisa_destek = son_bir_ay['Low'].min()
+                kisa_direnc = son_bir_ay['High'].max() if not son_bir_ay.empty else bugun_kapanis * 1.05
+                kisa_destek = son_bir_ay['Low'].min() if not son_bir_ay.empty else bugun_kapanis * 0.95
 
                 # Skorlama
                 skor = 50
