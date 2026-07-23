@@ -4,6 +4,19 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
+# --- SESSİON STATE (HAFIZA) BAŞLATMA ---
+# Sayfa her yenilendiğinde verilerin kaybolmasını engeller
+if "tarama_durumu" not in st.session_state:
+    st.session_state.tarama_durumu = False
+if "sonuclar" not in st.session_state:
+    st.session_state.sonuclar = []
+if "ham_veriler" not in st.session_state:
+    st.session_state.ham_veriler = {}
+if "boga_sayisi" not in st.session_state:
+    st.session_state.boga_sayisi = 0
+if "alim_firsati" not in st.session_state:
+    st.session_state.alim_firsati = 0
+
 # --- 1. SAYFA YAPILANDIRMASI VE CSS ---
 st.set_page_config(
     page_title="Hibrit Portföy Komuta Merkezi",
@@ -11,7 +24,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Özel CSS ile HTML/CSS modernleştirme
 st.markdown("""
 <style>
     .kpi-card {
@@ -29,12 +41,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Başlık
 st.title("📈 Hibrit Portföy Komuta Merkezi")
 st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Durum:** Canlı Piyasa & Risk Motoru Aktif")
 st.markdown("---")
 
-# --- 2. KENAR ÇUBUĞU VE HAZIR LİSTELER ---
+# --- 2. KENAR ÇUBUĞU ---
 st.sidebar.header("⚙️ Portföy & Risk Parametreleri")
 bist_kasa = st.sidebar.number_input("BIST Sanal Kasa (TL)", value=100000, step=10000)
 nasdaq_kasa = st.sidebar.number_input("NASDAQ Sanal Kasa ($)", value=10000, step=1000)
@@ -43,7 +54,6 @@ risk_orani = st.sidebar.slider("İşlem Başına Risk Oranı (%)", min_value=1.0
 st.sidebar.markdown("---")
 st.sidebar.subheader("📋 Hazır Portföy Seçimi")
 
-# Hazır portföy kategorileri
 preset_options = {
     "Kendi Seçimim (Standart)": ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"],
     "BIST Sanayi & Otomotiv": ["FROTO.IS", "TOASO.IS", "TUPRS.IS", "EREGL.IS", "DOAS.IS", "ASELS.IS"],
@@ -56,7 +66,6 @@ default_tickers = preset_options[secilen_kategori]
 
 selected_tickers = st.sidebar.multiselect("Takip Edilecek Varlıklar", default_tickers, default=default_tickers)
 
-# Anlık Hisse Ekleme
 st.sidebar.markdown("---")
 st.sidebar.subheader("➕ Anlık Hisse Ekle")
 ek_hisse_input = st.sidebar.text_input("Eklemek istediğiniz kod(lar):", placeholder="Örn: AKBNK.IS, INTC")
@@ -68,29 +77,27 @@ if ek_hisse_input:
             selected_tickers.append(h)
     st.sidebar.success(f"Eklendi: {', '.join(eklenenler)}")
 
-# --- TABLO RENKLENDİRME FONKSİYONU ---
 def style_dataframe(row):
     color = ''
     if '🟢' in row['Nihai Sinyal'] or '🔵' in row['Nihai Sinyal']:
-        color = 'background-color: rgba(39, 174, 96, 0.2)' # Hafif Yeşil
+        color = 'background-color: rgba(39, 174, 96, 0.2)'
     elif '🛑' in row['Nihai Sinyal'] or '🔴' in row['Nihai Sinyal']:
-        color = 'background-color: rgba(192, 57, 43, 0.2)' # Hafif Kırmızı
+        color = 'background-color: rgba(192, 57, 43, 0.2)'
     return [color] * len(row)
 
-# --- 3. ANA TARAMA MOTORU ---
+# --- 3. ANA TARAMA MOTORU (SADECE BUTONA BASILINCA HESAPLAR VE HAFIZAYA ALIR) ---
 if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
     
     with st.spinner("Piyasa verileri çekiliyor, teknik göstergeler hesaplanıyor..."):
-        sonuclar = []
+        gecici_sonuclar = []
+        gecici_ham_veriler = {}
         boga_sayisi = 0
-        alim_firsati_sayisi = 0
-        ham_veriler = {} # Grafik çizimi için verileri saklayacağız
+        alim_firsati = 0
 
         for ticker in selected_tickers:
             try:
                 stock = yf.Ticker(ticker)
                 
-                # Haftalık Trend (MTF)
                 df_weekly = stock.history(period="1y", interval="1wk")
                 haftalik_trend_pozitif = True
                 haftalik_durum = "Bilinmiyor"
@@ -100,7 +107,6 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                     haftalik_trend_pozitif = df_weekly['EMA_9'].iloc[-1] > df_weekly['EMA_21'].iloc[-1]
                     haftalik_durum = "Boğa 🟩" if haftalik_trend_pozitif else "Ayı 🟥"
 
-                # Günlük Veriler
                 df_long = stock.history(period="1y")
                 
                 if isinstance(df_long.columns, pd.MultiIndex):
@@ -108,9 +114,6 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                     
                 if df_long.empty or len(df_long) < 50:
                     continue
-                
-                # Grafik için veriyi sakla
-                ham_veriler[ticker] = df_long[['Close', 'Volume']].copy()
                     
                 para_birimi = "TL" if ".IS" in ticker else "$"
                 is_bist = ".IS" in ticker
@@ -123,19 +126,23 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 dun_kapanis = close_series.iloc[-2] if len(close_series) >= 2 else bugun_kapanis
                 yuzde_degisim = ((bugun_kapanis - dun_kapanis) / dun_kapanis) * 100 if dun_kapanis > 0 else 0.0
 
-                # İndikatörler
                 df_long['EMA_9'] = df_long['Close'].ewm(span=9, adjust=False).mean()
                 df_long['EMA_21'] = df_long['Close'].ewm(span=21, adjust=False).mean()
                 df_long['SMA_200'] = df_long['Close'].rolling(window=200).mean()
                 sma_200 = df_long['SMA_200'].iloc[-1] if len(df_long) >= 200 and not pd.isna(df_long['SMA_200'].iloc[-1]) else bugun_kapanis
                 uzun_vade_trend = bugun_kapanis > sma_200
 
+                # Grafik için RSI Hesabı
                 delta = df_long['Close'].diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
                 rs = gain / loss
-                rsi = (100 - (100 / (1 + rs))).iloc[-1]
+                df_long['RSI'] = 100 - (100 / (1 + rs))
+                rsi = df_long['RSI'].iloc[-1]
                 if pd.isna(rsi): rsi = 50.0
+                
+                # Grafik verilerini hafıza için sakla
+                gecici_ham_veriler[ticker] = df_long[['Close', 'Volume', 'RSI']].copy()
                 
                 macd_serisi = df_long['Close'].ewm(span=12).mean() - df_long['Close'].ewm(span=26).mean()
                 macd = macd_serisi.iloc[-1] if not macd_serisi.empty else 0
@@ -166,7 +173,6 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 kisa_direnc = son_bir_ay['High'].max() if not son_bir_ay.empty else bugun_kapanis * 1.05
                 kisa_destek = son_bir_ay['Low'].min() if not son_bir_ay.empty else bugun_kapanis * 0.95
 
-                # Skorlama
                 skor = 50
                 e9 = df_long['EMA_9'].iloc[-1]
                 e21 = df_long['EMA_21'].iloc[-1]
@@ -186,7 +192,6 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 else: skor -= 20
                 skor = max(0, min(100, skor))
 
-                # Sinyal
                 sinyal = "Nötr (İzle) ⚖️"
                 if not haftalik_trend_pozitif and not uzun_vade_trend and skor < 40:
                     sinyal = "UZAK DUR! 🛑"
@@ -194,22 +199,21 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                     sinyal = "KAR REALİZASYONU 🔴"
                 elif bugun_kapanis <= bb_alt and rsi <= 35 and uzun_vade_trend:
                     sinyal = "KUSURSUZ ALIM 🟢"
-                    alim_firsati_sayisi += 1
+                    alim_firsati += 1
                 elif rsi <= 40 and uzun_vade_trend:
                     sinyal = "KADEMELİ ALIM 🔵"
-                    alim_firsati_sayisi += 1
+                    alim_firsati += 1
                     
                 if uzun_vade_trend:
                     boga_sayisi += 1
 
-                # Lot Hesap
                 aktif_kasa = bist_kasa if is_bist else nasdaq_kasa
                 risk_tutar = aktif_kasa * risk_orani
                 hisse_risk = bugun_kapanis - dinamik_stop
                 lot = int(risk_tutar / hisse_risk) if hisse_risk > 0 else 0
                 maliyet = lot * bugun_kapanis
 
-                sonuclar.append({
+                gecici_sonuclar.append({
                     "Varlık": ticker,
                     "Fiyat": f"{bugun_kapanis:.2f} {para_birimi}",
                     "Günlük %": f"{yuzde_degisim:+.2f}%",
@@ -226,58 +230,70 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
             except Exception as e:
                 st.error(f"{ticker} analiz hatası: {e}")
 
-        # --- 4. KPI KARTLARI (METRİKLER) ---
-        if sonuclar:
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.markdown(f"""
-                <div class="kpi-card">
-                    <div class="kpi-title">Taranan Varlık</div>
-                    <div class="kpi-value">{len(sonuclar)}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-            with col2:
-                st.markdown(f"""
-                <div class="kpi-card">
-                    <div class="kpi-title">Boğa Trendinde (200G)</div>
-                    <div class="kpi-value kpi-highlight-green">{boga_sayisi}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-            with col3:
-                st.markdown(f"""
-                <div class="kpi-card">
-                    <div class="kpi-title">Alım Fırsatları</div>
-                    <div class="kpi-value">{"🔥 " + str(alim_firsati_sayisi) if alim_firsati_sayisi > 0 else "0"}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            # --- TABLOYU GÖRÜNTÜLE (RENKLENDİRİLMİŞ) ---
-            df_sonuc = pd.DataFrame(sonuclar)
-            st.success("Tarama başarıyla tamamlandı!")
-            
-            # Tabloyu CSS ile stillendirerek ekrana basıyoruz
-            styled_df = df_sonuc.style.apply(style_dataframe, axis=1)
-            st.dataframe(styled_df, use_container_width=True)
-            
-            st.markdown("---")
-            
-            # --- 5. DETAYLI GRAFİK (DRILL-DOWN) ---
-            st.subheader("📊 Varlık Detay Analizi")
-            secili_grafik = st.selectbox("Grafiğini incelemek istediğiniz varlığı seçin:", [s["Varlık"] for s in sonuclar])
-            
-            if secili_grafik in ham_veriler:
-                grafik_verisi = ham_veriler[secili_grafik]
-                tab1, tab2 = st.tabs(["Fiyat Hareketi (1 Yıl)", "İşlem Hacmi"])
-                
-                with tab1:
-                    st.line_chart(grafik_verisi['Close'], use_container_width=True, color="#2ecc71")
-                with tab2:
-                    st.bar_chart(grafik_verisi['Volume'], use_container_width=True, color="#3498db")
+        # HESAPLANAN VERİLERİ SESSİON STATE'E KAYDET
+        st.session_state.sonuclar = gecici_sonuclar
+        st.session_state.ham_veriler = gecici_ham_veriler
+        st.session_state.boga_sayisi = boga_sayisi
+        st.session_state.alim_firsati = alim_firsati
+        st.session_state.tarama_durumu = True
 
-else:
+# --- 4. ARAYÜZÜ ÇİZ (EĞER HAFIZADA VERİ VARSA) ---
+if st.session_state.tarama_durumu and st.session_state.sonuclar:
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Taranan Varlık</div>
+            <div class="kpi-value">{len(st.session_state.sonuclar)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col2:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Boğa Trendinde (200G)</div>
+            <div class="kpi-value kpi-highlight-green">{st.session_state.boga_sayisi}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col3:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Alım Fırsatları</div>
+            <div class="kpi-value">{"🔥 " + str(st.session_state.alim_firsati) if st.session_state.alim_firsati > 0 else "0"}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    df_sonuc = pd.DataFrame(st.session_state.sonuclar)
+    styled_df = df_sonuc.style.apply(style_dataframe, axis=1)
+    st.dataframe(styled_df, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # --- 5. DETAYLI GRAFİK (DRILL-DOWN) ---
+    st.subheader("📊 Varlık Detay Analizi")
+    
+    secili_grafik = st.selectbox("Grafiğini incelemek istediğiniz varlığı seçin:", [s["Varlık"] for s in st.session_state.sonuclar])
+    
+    if secili_grafik in st.session_state.ham_veriler:
+        grafik_verisi = st.session_state.ham_veriler[secili_grafik]
+        
+        # 3 Farklı Sekme
+        tab1, tab2, tab3 = st.tabs(["📉 Fiyat Hareketi (1 Yıl)", "📊 İşlem Hacmi", "⚡ RSI (Göreceli Güç Endeksi)"])
+        
+        with tab1:
+            st.line_chart(grafik_verisi['Close'], use_container_width=True, color="#2ecc71")
+        with tab2:
+            st.bar_chart(grafik_verisi['Volume'], use_container_width=True, color="#3498db")
+        with tab3:
+            # Sadece RSI değerleri NaN olmayanları göster ki grafik temiz çıksın
+            temiz_rsi = grafik_verisi['RSI'].dropna()
+            st.line_chart(temiz_rsi, use_container_width=True, color="#e74c3c")
+            st.caption("RSI 70 Üzeri: Aşırı Alım (Riskli) | RSI 30 Altı: Aşırı Satım (Fırsat)")
+
+elif not st.session_state.tarama_durumu:
     st.info("👈 Başlamak için sol menüden hazır bir profil seçebilir veya hisse ekleyip **'Piyasayı Tara'** butonuna tıklayabilirsin.")
