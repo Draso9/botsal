@@ -92,7 +92,7 @@ st.markdown("---")
 # --- 2. KENAR ÇUBUĞU (AKORDEON YAPISI) ---
 st.sidebar.header("⚙️ Kontrol Paneli")
 
-with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=False):
+with st.sidebar.expander("💰 Kasa and Risk Parametreleri", expanded=False):
     bist_kasa = st.number_input("BIST Sanal Kasa (TL)", value=100000, step=10000)
     nasdaq_kasa = st.number_input("NASDAQ Sanal Kasa ($)", value=10000, step=1000)
     risk_orani = st.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
@@ -150,7 +150,7 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
         on_change=hisse_ekle_callback
     )
 
-# --- YENİ: KENAR ÇUBUĞU GERÇEK PORTFÖY TANIMLAMA ---
+# --- GERÇEK PORTFÖY TANIMLAMA ---
 with st.sidebar.expander("💼 Gerçek Portföyüm (Varlıklarım)", expanded=True):
     st.markdown("Elindeki varlıkları ekle, sistem sana özel yol haritası çıkarsın:")
     
@@ -191,7 +191,6 @@ if tarama_tetiklendi:
         boga_sayisi = 0
         alim_firsati = 0
 
-        # Portföydeki varlıkların taranan listede olmadıkları varsa onları da taramaya otomatik dahil et
         if not st.session_state.user_portfolio_df.empty:
             portfoy_hisseleri = st.session_state.user_portfolio_df["Varlık"].tolist()
             for ph in portfoy_hisseleri:
@@ -377,16 +376,12 @@ if tarama_tetiklendi:
 # --- 4. ARAYÜZÜ ÇİZ ---
 if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
-    # --- YENİ BÖLÜM: AKILLI PORTFÖY REHBERİ VE YOL HARİTASI ---
     user_p_df = st.session_state.user_portfolio_df
     if not user_p_df.empty:
         st.subheader("🎯 Size Özel Portföy Yol Haritası ve Öneriler")
         
-        # Sonuçları pratik bir sözlüğe çevirelim
         tarama_dict = {s["RawTicker"]: s for s in st.session_state.sonuclar}
-        
         toplam_portfoy_degeri = 0
-        oneriler_sayisi = 0
         
         for index, row in user_p_df.iterrows():
             v_adi = row["Varlık"]
@@ -399,12 +394,13 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
                 p_birimi = item["ParaBirimi"]
                 anlik_deger = v_adet * anlik_fiyat
                 toplam_portfoy_degeri += anlik_deger
-                kar_zarar_ yuzde = ((anlik_fiyat - v_maliyet) / v_maliyet) * 100 if v_maliyet > 0 else 0
+                
+                # Hata veren yer düzeltildi (kar_zarar_yuzde)
+                kar_zarar_yuzde = ((anlik_fiyat - v_maliyet) / v_maliyet) * 100 if v_maliyet > 0 else 0
                 
                 sinyal_metni = item["Nihai Sinyal"]
                 stop_seviyesi = item["RawStop"]
                 
-                # Rehberlik mantığı
                 aksiyon_tipi = "Nötr / Takipte Kal ⚖️"
                 renk_kodu = "#3498db"
                 tavsiye = "Mevcut trendde pozisyonunuzu koruyabilirsiniz."
@@ -466,7 +462,6 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
     df_sonuc = pd.DataFrame(st.session_state.sonuclar)
     
-    # Sadece Alım Fırsatları Filtresi
     sadece_alim = st.checkbox("🎯 Sadece Alım Fırsatlarını Göster (Kusursuz / Kademeli Sinyaller)", value=False)
     
     if sadece_alim and not df_sonuc.empty:
@@ -475,7 +470,6 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
     if df_sonuc.empty:
         st.warning("Seçtiğiniz kriterlere uygun alım fırsatı bulunamadı.")
     else:
-        # Görselleştirme tablosundan gizli raw sütunları çıkaralım
         gosterge_df = df_sonuc.drop(columns=["RawTicker", "RawFiyat", "ParaBirimi", "RawStop"], errors='ignore')
 
         def color_dataframe(row):
@@ -491,7 +485,6 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
         
         st.markdown("---")
         
-        # --- 5. DETAYLI GRAFİK (DRILL-DOWN) ---
         st.subheader("📊 Varlık Detay Analizi")
         
         secili_grafik = st.selectbox("Grafiğini incelemek istediğiniz varlığı seçin:", [s["Varlık"] for s in st.session_state.sonuclar])
