@@ -87,13 +87,12 @@ def style_dataframe(row):
 # --- 3. ANA TARAMA MOTORU ---
 if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
     
-    with st.spinner("Piyasa ve Endeks verileri çekiliyor, hesaplanıyor..."):
+    with st.spinner("Piyasa ve endeks verileri işleniyor..."):
         gecici_sonuclar = []
         gecici_ham_veriler = {}
         boga_sayisi = 0
         alim_firsati = 0
 
-        # Endekslerin Son 1 Aylık Getirilerini Hesapla (Göreceli Güç İçin)
         try:
             bist_df = yf.Ticker("XU100.IS").history(period="1mo")
             bist_getiri = ((bist_df['Close'].iloc[-1] - bist_df['Close'].iloc[0]) / bist_df['Close'].iloc[0]) * 100 if not bist_df.empty else 0
@@ -136,19 +135,17 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 dun_kapanis = close_series.iloc[-2] if len(close_series) >= 2 else bugun_kapanis
                 yuzde_degisim = ((bugun_kapanis - dun_kapanis) / dun_kapanis) * 100 if dun_kapanis > 0 else 0.0
 
-                # Varlığın son 1 aylık (yaklaşık 21 işlem günü) getirisi
                 son_1_ay_df = df_long.tail(21)
                 hisse_1m_getiri = ((son_1_ay_df['Close'].iloc[-1] - son_1_ay_df['Close'].iloc[0]) / son_1_ay_df['Close'].iloc[0]) * 100 if not son_1_ay_df.empty else 0
                 
-                # Göreceli Güç Hesaplaması
                 if is_bist:
-                    göreceli_guc = hisse_1m_getiri - bist_getiri
-                    karsilastirma = "BIST100"
+                    goreceli_guc = hisse_1m_getiri - bist_getiri
+                    karsilastirma = "BIST"
                 elif is_emtia:
-                    göreceli_guc = hisse_1m_getiri # Emtiaları doğrudan kendi getirisiyle değerlendirelim
+                    goreceli_guc = hisse_1m_getiri
                     karsilastirma = "Kendi"
                 else:
-                    göreceli_guc = hisse_1m_getiri - nasdaq_getiri
+                    goreceli_guc = hisse_1m_getiri - nasdaq_getiri
                     karsilastirma = "NASDAQ"
 
                 df_long['EMA_9'] = df_long['Close'].ewm(span=9, adjust=False).mean()
@@ -157,7 +154,6 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 sma_200 = df_long['SMA_200'].iloc[-1] if len(df_long) >= 200 and not pd.isna(df_long['SMA_200'].iloc[-1]) else bugun_kapanis
                 uzun_vade_trend = bugun_kapanis > sma_200
 
-                # RSI Hesabı
                 delta = df_long['Close'].diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -181,7 +177,6 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
 
                 vol_sma_20 = df_long['Volume'].rolling(window=20).mean().iloc[-1] if 'Volume' in df_long else 0
                 hacim_carpan = df_long['Volume'].iloc[-1] / vol_sma_20 if vol_sma_20 and vol_sma_20 > 0 else 1.0
-                hacim_onay = df_long['Volume'].iloc[-1] > vol_sma_20 if vol_sma_20 else False
 
                 high_low = df_long['High'] - df_long['Low']
                 high_close = np.abs(df_long['High'] - df_long['Close'].shift())
@@ -206,19 +201,14 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 else: skor -= 15
                 if rsi >= 70: skor -= 10
                 elif rsi <= 30: skor += 10
-                if hacim_onay: skor += 10
-                else: skor -= 10
                 if bugun_kapanis < bb_alt: skor += 15 
                 elif bugun_kapanis > bb_ust: skor -= 15 
                 if haftalik_trend_pozitif: skor += 15
                 else: skor -= 25 
                 if uzun_vade_trend: skor += 15
                 else: skor -= 20
-                
-                # Yeni Göreceli Güç Skoru
-                if göreceli_guc > 0: skor += 10
-                elif göreceli_guc < -5: skor -= 10
-                
+                if goreceli_guc > 0: skor += 10
+                elif goreceli_guc < -5: skor -= 10
                 skor = max(0, min(100, skor))
 
                 sinyal = "Nötr (İzle) ⚖️"
@@ -232,7 +222,7 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 elif rsi <= 40 and uzun_vade_trend:
                     sinyal = "KADEMELİ ALIM 🔵"
                     alim_firsati += 1
-                    
+                
                 if uzun_vade_trend:
                     boga_sayisi += 1
 
@@ -241,21 +231,22 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 risk_tutar = aktif_kasa * risk_orani
                 hisse_risk = bugun_kapanis - dinamik_stop
                 lot = int(risk_tutar / hisse_risk) if hisse_risk > 0 else 0
-                maliyet = lot * bugun_kapanis
+                maliyet_hesabi = lot * bugun_kapanis
 
                 gecici_sonuclar.append({
                     "Varlık": gorunen_ad,
                     "Fiyat": f"{bugun_kapanis:.2f} {para_birimi}",
                     "Günlük %": f"{yuzde_degisim:+.2f}%",
-                    "Endeks Göreceli Güç (1A)": f"{'+' if göreceli_guc > 0 else ''}{göreceli_guc:.2f}% ({karsilastirma})",
+                    "Görec. Güç (1A)": f"{'+' if goreceli_guc > 0 else ''}{goreceli_guc:.2f}% ({karsilastirma})",
                     "Hacim": f"{hacim_carpan:.1f}x",
                     "Skor": f"%{skor}",
                     "Nihai Sinyal": sinyal,
                     "Haftalık Yön": haftalik_durum,
                     "200G Trend": "Boğa 🟩" if uzun_vade_trend else "Ayı 🟥",
+                    "Destek / Direnç": f"D: {kisa_destek:.2f} / R: {kisa_direnc:.2f}",
                     "Dinamik Stop": f"{dinamik_stop:.2f} {para_birimi}",
                     "Hedef 1 / 2": f"{hedef_1:.2f} / {hedef_2:.2f}",
-                    "Önerilen Lot": f"{lot} Adet ({maliyet:.0f} {para_birimi})"
+                    "Önerilen Lot": f"{lot} Adet ({maliyet_hesabi:.0f} {para_birimi})"
                 })
             except Exception as e:
                 st.error(f"{ticker} analiz hatası: {e}")
