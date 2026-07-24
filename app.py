@@ -16,7 +16,7 @@ if "boga_sayisi" not in st.session_state:
 if "alim_firsati" not in st.session_state:
     st.session_state.alim_firsati = 0
 
-# --- 1. SAYFA YAPILANDIRMASI VE CSS ---
+# --- 1. SAYFA YAPILANDIRMASI VE GELİŞMİŞ CSS ---
 st.set_page_config(
     page_title="Hibrit Portföy Komuta Merkezi",
     page_icon="📈",
@@ -25,18 +25,38 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    /* Genel Tema İyileştirmeleri */
+    .stApp {
+        background-color: #121212;
+        color: #E0E0E0;
+    }
+    
+    /* 1. Neon ve Parıltılı Gelişmiş KPI Kartları */
     .kpi-card {
-        background-color: #1E1E1E;
-        padding: 20px;
-        border-radius: 10px;
+        background: linear-gradient(135deg, #1E1E1E 0%, #2A2A2A 100%);
+        padding: 22px;
+        border-radius: 12px;
         text-align: center;
         border: 1px solid #333;
-        box-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+        transition: transform 0.2s ease;
     }
-    .kpi-title { font-size: 14px; color: #AAAAAA; }
-    .kpi-value { font-size: 24px; font-weight: bold; color: #FFFFFF; }
-    .kpi-highlight-green { color: #00FF00; }
-    .kpi-highlight-red { color: #FF4444; }
+    .kpi-card:hover {
+        border-color: #00FF88;
+        box-shadow: 0 4px 25px rgba(0,255,136,0.15);
+    }
+    .kpi-title { font-size: 13px; color: #999999; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+    .kpi-value { font-size: 28px; font-weight: bold; color: #FFFFFF; margin-top: 5px; }
+    .kpi-subtext { font-size: 11px; color: #888888; margin-top: 4px; }
+    .kpi-highlight-green { color: #00FF88 !important; text-shadow: 0 0 10px rgba(0,255,136,0.3); }
+    .kpi-highlight-fire { color: #FF5555 !important; text-shadow: 0 0 10px rgba(255,85,85,0.3); }
+
+    /* 2. Özel Sinyal Rozetleri (Badges) */
+    .badge-kusursuz { background-color: rgba(0, 255, 136, 0.15); color: #00FF88; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #00FF88; }
+    .badge-kademeli { background-color: rgba(52, 152, 219, 0.15); color: #3498db; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #3498db; }
+    .badge-kar { background-color: rgba(231, 76, 60, 0.15); color: #e74c3c; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #e74c3c; }
+    .badge-uzak { background-color: rgba(192, 57, 43, 0.3); color: #ff6b6b; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #c0392b; }
+    .badge-notr { background-color: rgba(149, 165, 166, 0.15); color: #bdc3c7; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #7f8c8d; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -44,49 +64,39 @@ st.title("📈 Hibrit Portföy Komuta Merkezi")
 st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Durum:** Canlı Piyasa & Risk Motoru Aktif")
 st.markdown("---")
 
-# --- 2. KENAR ÇUBUĞU ---
-st.sidebar.header("⚙️ Portföy & Risk Parametreleri")
-bist_kasa = st.sidebar.number_input("BIST Sanal Kasa (TL)", value=100000, step=10000)
-nasdaq_kasa = st.sidebar.number_input("NASDAQ Sanal Kasa ($)", value=10000, step=1000)
-risk_orani = st.sidebar.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
+# --- 2. KENAR ÇUBUĞU (AKORDEON YAPISIYLA DÜZENLENDİ) ---
+st.sidebar.header("⚙️ Kontrol Paneli")
+
+with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
+    bist_kasa = st.number_input("BIST Sanal Kasa (TL)", value=100000, step=10000)
+    nasdaq_kasa = st.number_input("NASDAQ Sanal Kasa ($)", value=10000, step=1000)
+    risk_orani = st.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
+
+with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
+    preset_options = {
+        "Kendi Seçimim (Standart)": ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"],
+        "BIST Sanayi & Otomotiv": ["FROTO.IS", "TOASO.IS", "TUPRS.IS", "EREGL.IS", "DOAS.IS", "ASELS.IS"],
+        "ABD Teknoloji (Mag 7)": ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA"],
+        "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL"]
+    }
+
+    secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()))
+    default_tickers = preset_options[secilen_kategori]
+    selected_tickers = st.multiselect("Takip Edilecek Varlıklar", default_tickers, default=default_tickers)
+
+    ek_hisse_input = st.text_input("Eklemek istediğiniz kod(lar):", placeholder="Örn: AKBNK.IS, GC=F")
+    if ek_hisse_input:
+        eklenenler = [h.strip().upper() for h in ek_hisse_input.replace(",", " ").split() if h.strip()]
+        for h in eklenenler:
+            if h not in selected_tickers:
+                selected_tickers.append(h)
+        st.success(f"Eklendi: {', '.join(eklenenler)}")
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📋 Hazır Portföy Seçimi")
-
-preset_options = {
-    "Kendi Seçimim (Standart)": ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"],
-    "BIST Sanayi & Otomotiv": ["FROTO.IS", "TOASO.IS", "TUPRS.IS", "EREGL.IS", "DOAS.IS", "ASELS.IS"],
-    "ABD Teknoloji (Mag 7)": ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA"],
-    "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL"]
-}
-
-secilen_kategori = st.sidebar.selectbox("Hızlı Tarama Profili", list(preset_options.keys()))
-default_tickers = preset_options[secilen_kategori]
-
-selected_tickers = st.sidebar.multiselect("Takip Edilecek Varlıklar", default_tickers, default=default_tickers)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("➕ Anlık Hisse Ekle")
-ek_hisse_input = st.sidebar.text_input("Eklemek istediğiniz kod(lar):", placeholder="Örn: AKBNK.IS, GC=F")
-
-if ek_hisse_input:
-    eklenenler = [h.strip().upper() for h in ek_hisse_input.replace(",", " ").split() if h.strip()]
-    for h in eklenenler:
-        if h not in selected_tickers:
-            selected_tickers.append(h)
-    st.sidebar.success(f"Eklendi: {', '.join(eklenenler)}")
-
-def style_dataframe(row):
-    color = ''
-    if '🟢' in row['Nihai Sinyal'] or '🔵' in row['Nihai Sinyal']:
-        color = 'background-color: rgba(39, 174, 96, 0.2)'
-    elif '🛑' in row['Nihai Sinyal'] or '🔴' in row['Nihai Sinyal']:
-        color = 'background-color: rgba(192, 57, 43, 0.2)'
-    return [color] * len(row)
+tarama_tetiklendi = st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary", use_container_width=True)
 
 # --- 3. ANA TARAMA MOTORU ---
-if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
-    
+if tarama_tetiklendi:
     with st.spinner("Piyasa ve endeks verileri işleniyor..."):
         gecici_sonuclar = []
         gecici_ham_veriler = {}
@@ -211,6 +221,7 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 elif goreceli_guc < -5: skor -= 10
                 skor = max(0, min(100, skor))
 
+                # 3. Şık HTML Rozetleri (Badges) Tanımlamaları
                 sinyal = "Nötr (İzle) ⚖️"
                 if not haftalik_trend_pozitif and not uzun_vade_trend and skor < 40:
                     sinyal = "UZAK DUR! 🛑"
@@ -239,7 +250,7 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                     "Günlük %": f"{yuzde_degisim:+.2f}%",
                     "Görec. Güç (1A)": f"{'+' if goreceli_guc > 0 else ''}{goreceli_guc:.2f}% ({karsilastirma})",
                     "Hacim": f"{hacim_carpan:.1f}x",
-                    "Skor": f"%{skor}",
+                    "Skor": skor, # Sayısal bırakıldı ki bar stili uygulayabilelim
                     "Nihai Sinyal": sinyal,
                     "Haftalık Yön": haftalik_durum,
                     "200G Trend": "Boğa 🟩" if uzun_vade_trend else "Ayı 🟥",
@@ -260,6 +271,7 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
 # --- 4. ARAYÜZÜ ÇİZ ---
 if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
+    # 1. Neon Parıltılı Gelişmiş KPI Kartları Gösterimi
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -267,6 +279,7 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
         <div class="kpi-card">
             <div class="kpi-title">Taranan Varlık</div>
             <div class="kpi-value">{len(st.session_state.sonuclar)}</div>
+            <div class="kpi-subtext">Aktif Takip Listesi</div>
         </div>
         """, unsafe_allow_html=True)
         
@@ -275,6 +288,7 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
         <div class="kpi-card">
             <div class="kpi-title">Boğa Trendinde (200G)</div>
             <div class="kpi-value kpi-highlight-green">{st.session_state.boga_sayisi}</div>
+            <div class="kpi-subtext">Uzun Vade Güçlü Yapı</div>
         </div>
         """, unsafe_allow_html=True)
         
@@ -282,14 +296,31 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
         st.markdown(f"""
         <div class="kpi-card">
             <div class="kpi-title">Alım Fırsatları</div>
-            <div class="kpi-value">{"🔥 " + str(st.session_state.alim_firsati) if st.session_state.alim_firsati > 0 else "0"}</div>
+            <div class="kpi-value kpi-highlight-fire">{"🔥 " + str(st.session_state.alim_firsati) if st.session_state.alim_firsati > 0 else "0"}</div>
+            <div class="kpi-subtext">Kusursuz / Kademeli Sinyaller</div>
         </div>
         """, unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     
     df_sonuc = pd.DataFrame(st.session_state.sonuclar)
-    styled_df = df_sonuc.style.apply(style_dataframe, axis=1)
+    
+    # Skor sütununu yüzde formatına çeviriyoruz
+    df_sonuc['Skor'] = df_sonuc['Skor'].apply(lambda x: f"%{x}")
+
+    # 4. Pandas Styler ile Şık Veri Çubukları (Data Bars) ve Renklendirmeler
+    def color_and_bars(s):
+        return ['background-color: rgba(39, 174, 96, 0.15)' if '🟢' in str(v) or '🔵' in str(v) 
+                else 'background-color: rgba(192, 57, 43, 0.15)' if '🛑' in str(v) or '🔴' in str(v) 
+                else '' for v in s]
+
+    styled_df = df_sonuc.style.apply(color_and_bars, subset=['Nihai Sinyal']).bar(
+        subset=['Skor'], 
+        color='#2ecc71', 
+        vmin=0, 
+        vmax=100
+    )
+    
     st.dataframe(styled_df, use_container_width=True)
     
     st.markdown("---")
@@ -310,7 +341,7 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
             st.line_chart(
                 grafik_verisi[['Close', 'EMA_9', 'EMA_21']], 
                 use_container_width=True, 
-                color=["#2ecc71", "#e74c3c", "#f39c12"]
+                color=["#00FF88", "#FF5555", "#FFB300"]
             )
             st.caption("🟢 Fiyat | 🔴 EMA-9 (Kısa Vade) | 🟠 EMA-21 (Orta Vade) — Kırmızının turuncuyu yukarı kesmesi yükseliş sinyalidir.")
             
@@ -319,8 +350,8 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
             
         with tab3:
             temiz_rsi = grafik_verisi['RSI'].dropna()
-            st.line_chart(temiz_rsi, use_container_width=True, color="#e74c3c")
+            st.line_chart(temiz_rsi, use_container_width=True, color="#FF5555")
             st.caption("RSI 70 Üzeri: Aşırı Alım (Riskli) | RSI 30 Altı: Aşırı Satım (Fırsat)")
 
 elif not st.session_state.tarama_durumu:
-    st.info("👈 Başlamak için sol menüden hazır bir profil seçebilir veya hisse ekleyip **'Piyasayı Tara'** butonuna tıklayabilirsin.")
+    st.info("👈 Başlamak için sol menüden kontrol panelini düzenleyebilir ve **'Piyasayı Tara'** butonuna tıklayabilirsin.")
