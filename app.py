@@ -3,40 +3,6 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import os
-
-# --- DOSYA TABANLI KALICI HAFIZA FONKSİYONLARI ---
-TICKER_DOSYASI = "custom_tickers.txt"
-VARSAYILAN_TICKERS = ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"]
-
-def dosyadan_ticker_oku():
-    if os.path.exists(TICKER_DOSYASI):
-        with open(TICKER_DOSYASI, "r", encoding="utf-8") as f:
-            t_list = [line.strip().upper() for line in f if line.strip()]
-            if t_list:
-                return t_list
-    dosyaya_ticker_yaz(VARSAYILAN_TICKERS)
-    return VARSAYILAN_TICKERS
-
-def dosyaya_ticker_yaz(t_list):
-    with open(TICKER_DOSYASI, "w", encoding="utf-8") as f:
-        for t in t_list:
-            f.write(f"{t}\n")
-
-# --- SESSİON STATE (HAFIZA) BAŞLATMA ---
-if "tarama_durumu" not in st.session_state:
-    st.session_state.tarama_durumu = False
-if "sonuclar" not in st.session_state:
-    st.session_state.sonuclar = []
-if "ham_veriler" not in st.session_state:
-    st.session_state.ham_veriler = {}
-if "boga_sayisi" not in st.session_state:
-    st.session_state.boga_sayisi = 0
-if "alim_firsati" not in st.session_state:
-    st.session_state.alim_firsati = 0
-
-if "custom_tickers" not in st.session_state:
-    st.session_state.custom_tickers = dosyadan_ticker_oku()
 
 # --- 1. SAYFA YAPILANDIRMASI VE STİL ---
 st.set_page_config(
@@ -72,38 +38,55 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- 2. KİŞİSEL OTURUM HAFIZASI (SESSION STATE) ---
+VARSAYILAN_TICKERS = ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"]
+
+if "tarama_durumu" not in st.session_state:
+    st.session_state.tarama_durumu = False
+if "sonuclar" not in st.session_state:
+    st.session_state.sonuclar = []
+if "ham_veriler" not in st.session_state:
+    st.session_state.ham_veriler = {}
+if "boga_sayisi" not in st.session_state:
+    st.session_state.boga_sayisi = 0
+if "alim_firsati" not in st.session_state:
+    st.session_state.alim_firsati = 0
+
+# Her kullanıcının tarayıcısında kendine ait izole takip listesi
+if "user_tickers" not in st.session_state:
+    st.session_state.user_tickers = VARSAYILAN_TICKERS.copy()
+
 st.title("📈 Hibrit Portföy Komuta Merkezi")
-st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Durum:** Canlı Piyasa & Sinyal Motoru Aktif")
+st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Mod:** Kişisel Oturum & Canlı Piyasa Motoru")
 st.markdown("---")
 
-# --- 2. KENAR ÇUBUĞU (AKORDEON YAPISI) ---
-st.sidebar.header("⚙️ Kontrol Paneli")
+# --- 3. KENAR ÇUBUĞU (KİŞİSEL KONTROL PANELİ) ---
+st.sidebar.header("⚙️ Kişisel Kontrol Paneli")
 
 with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
     bist_kasa = st.number_input("BIST Sanal Kasa (TL)", value=100000, step=10000)
     nasdaq_kasa = st.number_input("NASDAQ Sanal Kasa ($)", value=10000, step=1000)
     risk_orani = st.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
 
-# --- HİSSE EKLEME CALLBACK FONKSİYONU ---
+# --- KİŞİSEL HİSSE EKLEME CALLBACK ---
 def hisse_ekle_callback():
     input_degeri = st.session_state.get("ek_hisse_input_field", "")
     if input_degeri.strip():
         eklenenler = [h.strip().upper() for h in input_degeri.replace(",", " ").split() if h.strip()]
         yeni_eklendi = False
         for h in eklenenler:
-            if h not in st.session_state.custom_tickers:
-                st.session_state.custom_tickers.append(h)
+            if h not in st.session_state.user_tickers:
+                st.session_state.user_tickers.append(h)
                 yeni_eklendi = True
         
         if yeni_eklendi:
-            dosyaya_ticker_yaz(st.session_state.custom_tickers)
-            st.sidebar.success(f"Kalıcı olarak eklendi: {', '.join(eklenenler)}")
+            st.sidebar.success(f"Listene eklendi: {', '.join(eklenenler)}")
         
         st.session_state["ek_hisse_input_field"] = ""
 
-with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
+with st.sidebar.expander("📋 Kişisel Varlık Seçimi ve Profiller", expanded=True):
     preset_options = {
-        "Kendi Seçimim (Standart)": st.session_state.custom_tickers,
+        "Kendi Listem (Özel)": st.session_state.user_tickers,
         "BIST 30 (Ana Hisseler)": [
             "THYAO.IS", "GARAN.IS", "AKBNK.IS", "ISCTR.IS", "YKBNK.IS", 
             "EREGL.IS", "KRDMD.IS", "PETKM.IS", "TUPRS.IS", "FROTO.IS", 
@@ -131,23 +114,21 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
     selected_tickers = st.multiselect("Takip Edilecek Varlıklar", default_tickers, default=default_tickers)
 
     st.text_input(
-        "Eklemek istediğiniz kod(lar):", 
+        "Listene hisse ekle (Örn: GARAN.IS):", 
         placeholder="Örn: KCHOL.IS, INTC", 
         key="ek_hisse_input_field", 
         on_change=hisse_ekle_callback
     )
 
-    # --- YENİ EKLENEN SIFIRLAMA BUTONU ---
-    if st.button("🔄 Özel Listeyi Varsayılana Sıfırla"):
-        st.session_state.custom_tickers = VARSAYILAN_TICKERS.copy()
-        dosyaya_ticker_yaz(VARSAYILAN_TICKERS)
-        st.success("Özel liste fabrika ayarlarına döndürüldü!")
+    if st.button("🔄 Kişisel Listemi Varsayılana Sıfırla"):
+        st.session_state.user_tickers = VARSAYILAN_TICKERS.copy()
+        st.success("Listeniz sıfırlandı!")
         st.rerun()
 
 st.sidebar.markdown("---")
 tarama_tetiklendi = st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary", use_container_width=True)
 
-# --- 3. ANA TARAMA MOTORU ---
+# --- 4. ANA TARAMA MOTORU ---
 if tarama_tetiklendi:
     with st.spinner("Piyasa ve endeks verileri taranıyor, göstergeler hesaplanıyor..."):
         gecici_sonuclar = []
@@ -327,7 +308,7 @@ if tarama_tetiklendi:
         st.session_state.alim_firsati = alim_firsati
         st.session_state.tarama_durumu = True
 
-# --- 4. ARAYÜZÜ ÇİZ ---
+# --- 5. ARAYÜZÜ ÇİZ ---
 if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
     col1, col2, col3 = st.columns(3)
@@ -337,7 +318,7 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
         <div class="kpi-card">
             <div class="kpi-title">Taranan Varlık</div>
             <div class="kpi-value">{len(st.session_state.sonuclar)}</div>
-            <div class="kpi-subtext">Aktif Takip Listesi</div>
+            <div class="kpi-subtext">Kişisel Takip Listen</div>
         </div>
         """, unsafe_allow_html=True)
         
