@@ -125,7 +125,16 @@ if tarama_tetiklendi:
                     
                 bugun_kapanis = close_series.iloc[-1]
                 dun_kapanis = close_series.iloc[-2] if len(close_series) >= 2 else bugun_kapanis
-                yuzde_degisim = ((bugun_kapanis - dun_kapanis) / dun_kapanis) * 100 if dun_kapanis > 0 else 0.0
+                
+                # Günlük yüzde değişimi Yahoo'nun resmi önceki kapanış verisiyle garantiliyoruz
+                try:
+                    onceki_kapanis = stock.info.get('regularMarketPreviousClose', dun_kapanis)
+                    if not onceki_kapanis or pd.isna(onceki_kapanis):
+                        onceki_kapanis = dun_kapanis
+                except:
+                    onceki_kapanis = dun_kapanis
+
+                yuzde_degisim = ((bugun_kapanis - onceki_kapanis) / onceki_kapanis) * 100 if onceki_kapanis > 0 else 0.0
 
                 son_1_ay_df = df_long.tail(21)
                 hisse_1m_getiri = ((son_1_ay_df['Close'].iloc[-1] - son_1_ay_df['Close'].iloc[0]) / son_1_ay_df['Close'].iloc[0]) * 100 if not son_1_ay_df.empty else 0
