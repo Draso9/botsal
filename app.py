@@ -90,7 +90,6 @@ def hisse_ekle_callback():
             dosyaya_ticker_yaz(st.session_state.custom_tickers)
             st.sidebar.success(f"Kalıcı olarak eklendi: {', '.join(eklenenler)}")
         
-        # Enter'a basıldıktan sonra input kutusunu tamamen temizle
         st.session_state["ek_hisse_input_field"] = ""
 
 with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
@@ -122,7 +121,6 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
     
     selected_tickers = st.multiselect("Takip Edilecek Varlıklar", default_tickers, default=default_tickers)
 
-    # Placeholder güncellendi
     st.text_input(
         "Eklemek istediğiniz kod(lar):", 
         placeholder="Örn: KCHOL.IS, INTC", 
@@ -349,46 +347,55 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
     df_sonuc = pd.DataFrame(st.session_state.sonuclar)
     
-    def color_dataframe(row):
-        color = ''
-        if '🟢' in str(row['Nihai Sinyal']) or '🔵' in str(row['Nihai Sinyal']):
-            color = 'background-color: rgba(39, 174, 96, 0.15)'
-        elif '🛑' in str(row['Nihai Sinyal']) or '🔴' in str(row['Nihai Sinyal']):
-            color = 'background-color: rgba(192, 57, 43, 0.15)'
-        return [color] * len(row)
+    # --- YENİ EKLENEN FİLTRELEME ÖZELLİĞİ ---
+    sadece_alim = st.checkbox("🎯 Sadece Alım Fırsatlarını Göster (Kusursuz / Kademeli Sinyaller)", value=False)
+    
+    if sadece_alim and not df_sonuc.empty:
+        df_sonuc = df_sonuc[df_sonuc['Nihai Sinyal'].str.contains("KUSURSUZ ALIM|KADEMELİ ALIM", case=False, na=False)]
+    
+    if df_sonuc.empty:
+        st.warning("Seçtiğiniz kriterlere uygun alım fırsatı bulunamadı.")
+    else:
+        def color_dataframe(row):
+            color = ''
+            if '🟢' in str(row['Nihai Sinyal']) or '🔵' in str(row['Nihai Sinyal']):
+                color = 'background-color: rgba(39, 174, 96, 0.15)'
+            elif '🛑' in str(row['Nihai Sinyal']) or '🔴' in str(row['Nihai Sinyal']):
+                color = 'background-color: rgba(192, 57, 43, 0.15)'
+            return [color] * len(row)
 
-    styled_df = df_sonuc.style.apply(color_dataframe, axis=1)
-    st.dataframe(styled_df, use_container_width=True)
-    
-    st.markdown("---")
-    
-    # --- 5. DETAYLI GRAFİK (DRILL-DOWN) ---
-    st.subheader("📊 Varlık Detay Analizi")
-    
-    secili_grafik = st.selectbox("Grafiğini incelemek istediğiniz varlığı seçin:", [s["Varlık"] for s in st.session_state.sonuclar])
-    
-    aktif_ticker_anahtari = "GC=F" if "Ons Altın" in secili_grafik else secili_grafik
-    
-    if aktif_ticker_anahtari in st.session_state.ham_veriler:
-        grafik_verisi = st.session_state.ham_veriler[aktif_ticker_anahtari]
+        styled_df = df_sonuc.style.apply(color_dataframe, axis=1)
+        st.dataframe(styled_df, use_container_width=True)
         
-        tab1, tab2, tab3 = st.tabs(["📉 Fiyat Hareketi (1 Yıl)", "📊 İşlem Hacmi", "⚡ RSI (Göreceli Güç Endeksi)"])
+        st.markdown("---")
         
-        with tab1:
-            st.line_chart(
-                grafik_verisi[['Close', 'EMA_9', 'EMA_21']], 
-                use_container_width=True, 
-                color=["#00FF88", "#FF5555", "#FFB300"]
-            )
-            st.caption("🟢 Fiyat | 🔴 EMA-9 (Kısa Vade) | 🟠 EMA-21 (Orta Vade)")
+        # --- 5. DETAYLI GRAFİK (DRILL-DOWN) ---
+        st.subheader("📊 Varlık Detay Analizi")
+        
+        secili_grafik = st.selectbox("Grafiğini incelemek istediğiniz varlığı seçin:", [s["Varlık"] for s in st.session_state.sonuclar])
+        
+        aktif_ticker_anahtari = "GC=F" if "Ons Altın" in secili_grafik else secili_grafik
+        
+        if aktif_ticker_anahtari in st.session_state.ham_veriler:
+            grafik_verisi = st.session_state.ham_veriler[aktif_ticker_anahtari]
             
-        with tab2:
-            st.bar_chart(grafik_verisi['Volume'], use_container_width=True, color="#3498db")
+            tab1, tab2, tab3 = st.tabs(["📉 Fiyat Hareketi (1 Yıl)", "📊 İşlem Hacmi", "⚡ RSI (Göreceli Güç Endeksi)"])
             
-        with tab3:
-            temiz_rsi = grafik_verisi['RSI'].dropna()
-            st.line_chart(temiz_rsi, use_container_width=True, color="#FF5555")
-            st.caption("RSI 70 Üzeri: Aşırı Alım | RSI 30 Altı: Aşırı Satım")
+            with tab1:
+                st.line_chart(
+                    grafik_verisi[['Close', 'EMA_9', 'EMA_21']], 
+                    use_container_width=True, 
+                    color=["#00FF88", "#FF5555", "#FFB300"]
+                )
+                st.caption("🟢 Fiyat | 🔴 EMA-9 (Kısa Vade) | 🟠 EMA-21 (Orta Vade)")
+                
+            with tab2:
+                st.bar_chart(grafik_verisi['Volume'], use_container_width=True, color="#3498db")
+                
+            with tab3:
+                temiz_rsi = grafik_verisi['RSI'].dropna()
+                st.line_chart(temiz_rsi, use_container_width=True, color="#FF5555")
+                st.caption("RSI 70 Üzeri: Aşırı Alım | RSI 30 Altı: Aşırı Satım")
 
 elif not st.session_state.tarama_durumu:
     st.info("👈 Başlamak için sol menüden kontrol panelini düzenleyebilir ve **'Piyasayı Tara'** butonuna tıklayabilirsin.")
