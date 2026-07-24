@@ -90,7 +90,7 @@ def hisse_ekle_callback():
             dosyaya_ticker_yaz(st.session_state.custom_tickers)
             st.sidebar.success(f"Kalıcı olarak eklendi: {', '.join(eklenenler)}")
         
-        # Enter'a basıldıktan sonra input kutusunu temizle
+        # Enter'a basıldıktan sonra input kutusunu tamamen temizle
         st.session_state["ek_hisse_input_field"] = ""
 
 with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
@@ -122,10 +122,10 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
     
     selected_tickers = st.multiselect("Takip Edilecek Varlıklar", default_tickers, default=default_tickers)
 
-    # Enter'a basıldığında tetiklenen ve kutuyu temizleyen input alanı
+    # Placeholder güncellendi
     st.text_input(
         "Eklemek istediğiniz kod(lar):", 
-        placeholder="Örn: KCHOL.IS, COIN ve Enter", 
+        placeholder="Örn: KCHOL.IS, INTC", 
         key="ek_hisse_input_field", 
         on_change=hisse_ekle_callback
     )
