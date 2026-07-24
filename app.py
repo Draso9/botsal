@@ -140,7 +140,8 @@ if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
                 rsi = df_long['RSI'].iloc[-1]
                 if pd.isna(rsi): rsi = 50.0
                 
-                gecici_ham_veriler[ticker] = df_long[['Close', 'Volume', 'RSI']].copy()
+                # Grafikte gösterebilmek için hareketli ortalamaları da hafızaya alıyoruz
+                gecici_ham_veriler[ticker] = df_long[['Close', 'Volume', 'RSI', 'EMA_9', 'EMA_21']].copy()
                 
                 macd_serisi = df_long['Close'].ewm(span=12).mean() - df_long['Close'].ewm(span=26).mean()
                 macd = macd_serisi.iloc[-1] if not macd_serisi.empty else 0
@@ -288,9 +289,17 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
         tab1, tab2, tab3 = st.tabs(["📉 Fiyat Hareketi (1 Yıl)", "📊 İşlem Hacmi", "⚡ RSI (Göreceli Güç Endeksi)"])
         
         with tab1:
-            st.line_chart(grafik_verisi['Close'], use_container_width=True, color="#2ecc71")
+            # Sütunları özel renklerle eşleştirerek çoklu çizgi grafiği oluşturuyoruz
+            st.line_chart(
+                grafik_verisi[['Close', 'EMA_9', 'EMA_21']], 
+                use_container_width=True, 
+                color=["#2ecc71", "#e74c3c", "#f39c12"]
+            )
+            st.caption("🟢 Fiyat | 🔴 EMA-9 (Kısa Vade) | 🟠 EMA-21 (Orta Vade) — Kırmızının turuncuyu yukarı kesmesi yükseliş sinyalidir.")
+            
         with tab2:
             st.bar_chart(grafik_verisi['Volume'], use_container_width=True, color="#3498db")
+            
         with tab3:
             temiz_rsi = grafik_verisi['RSI'].dropna()
             st.line_chart(temiz_rsi, use_container_width=True, color="#e74c3c")
