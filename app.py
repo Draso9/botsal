@@ -7,6 +7,7 @@ import os
 
 # --- DOSYA TABANLI KALICI HAFIZA FONKSİYONLARI ---
 TICKER_DOSYASI = "custom_tickers.txt"
+PORTFOY_DOSYASI = "user_portfolio.csv"
 
 def dosyadan_ticker_oku():
     if os.path.exists(TICKER_DOSYASI):
@@ -23,6 +24,17 @@ def dosyaya_ticker_yaz(t_list):
         for t in t_list:
             f.write(f"{t}\n")
 
+def portfoy_dosyasindan_oku():
+    if os.path.exists(PORTFOY_DOSYASI):
+        try:
+            return pd.read_csv(PORTFOY_DOSYASI)
+        except:
+            pass
+    return pd.DataFrame(columns=["Varlık", "Adet", "Maliyet"])
+
+def portfoy_dosyasina_yaz(df):
+    df.to_csv(PORTFOY_DOSYASI, index=False)
+
 # --- SESSİON STATE (HAFIZA) BAŞLATMA ---
 if "tarama_durumu" not in st.session_state:
     st.session_state.tarama_durumu = False
@@ -37,6 +49,9 @@ if "alim_firsati" not in st.session_state:
 
 if "custom_tickers" not in st.session_state:
     st.session_state.custom_tickers = dosyadan_ticker_oku()
+
+if "user_portfolio_df" not in st.session_state:
+    st.session_state.user_portfolio_df = portfoy_dosyasindan_oku()
 
 # --- 1. SAYFA YAPILANDIRMASI VE STİL ---
 st.set_page_config(
@@ -60,17 +75,24 @@ st.markdown("""
     .kpi-subtext { font-size: 11px; color: #777777; margin-top: 4px; }
     .kpi-highlight-green { color: #00FF88; }
     .kpi-highlight-fire { color: #FF5555; }
+    .action-box {
+        background-color: #262626;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 5px solid #00FF88;
+        margin-bottom: 10px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📈 Hibrit Portföy Komuta Merkezi")
-st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Durum:** Canlı Piyasa & Risk Motoru Aktif")
+st.title("📈 Hibrit Portföy Komuta Merkezi & Akıllı Rehber")
+st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Durum:** Canlı Piyasa & Portföy Motoru Aktif")
 st.markdown("---")
 
 # --- 2. KENAR ÇUBUĞU (AKORDEON YAPISI) ---
 st.sidebar.header("⚙️ Kontrol Paneli")
 
-with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
+with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=False):
     bist_kasa = st.number_input("BIST Sanal Kasa (TL)", value=100000, step=10000)
     nasdaq_kasa = st.number_input("NASDAQ Sanal Kasa ($)", value=10000, step=1000)
     risk_orani = st.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
@@ -128,6 +150,36 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
         on_change=hisse_ekle_callback
     )
 
+# --- YENİ: KENAR ÇUBUĞU GERÇEK PORTFÖY TANIMLAMA ---
+with st.sidebar.expander("💼 Gerçek Portföyüm (Varlıklarım)", expanded=True):
+    st.markdown("Elindeki varlıkları ekle, sistem sana özel yol haritası çıkarsın:")
+    
+    p_varlik = st.text_input("Varlık Adı", placeholder="Örn: FROTO.IS veya AAPL")
+    p_adet = st.number_input("Adet / Lot", min_value=1, value=100, step=1)
+    p_maliyet = st.number_input("Ortalama Maliyet", min_value=0.0, value=100.0, step=1.0)
+    
+    if st.button("Portföye Ekle / Güncelle"):
+        if p_varlik.strip():
+            temiz_p = p_varlik.strip().upper()
+            df_p = st.session_state.user_portfolio_df
+            if temiz_p in df_p["Varlık"].values:
+                df_p.loc[df_p["Varlık"] == temiz_p, ["Adet", "Maliyet"]] = [p_adet, p_maliyet]
+            else:
+                yeni_satir = pd.DataFrame([{"Varlık": temiz_p, "Adet": p_adet, "Maliyet": p_maliyet}])
+                df_p = pd.concat([df_p, yeni_satir], ignore_index=True)
+            
+            st.session_state.user_portfolio_df = df_p
+            portfoy_dosyasina_yaz(df_p)
+            st.success(f"{temiz_p} portföye kaydedildi!")
+
+    if not st.session_state.user_portfolio_df.empty:
+        st.markdown("**Kayıtlı Varlıkların:**")
+        st.dataframe(st.session_state.user_portfolio_df, use_container_width=True, hide_index=True)
+        if st.button("Portföyü Temizle"):
+            st.session_state.user_portfolio_df = pd.DataFrame(columns=["Varlık", "Adet", "Maliyet"])
+            portfoy_dosyasina_yaz(st.session_state.user_portfolio_df)
+            st.rerun()
+
 st.sidebar.markdown("---")
 tarama_tetiklendi = st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary", use_container_width=True)
 
@@ -138,6 +190,13 @@ if tarama_tetiklendi:
         gecici_ham_veriler = {}
         boga_sayisi = 0
         alim_firsati = 0
+
+        # Portföydeki varlıkların taranan listede olmadıkları varsa onları da taramaya otomatik dahil et
+        if not st.session_state.user_portfolio_df.empty:
+            portfoy_hisseleri = st.session_state.user_portfolio_df["Varlık"].tolist()
+            for ph in portfoy_hisseleri:
+                if ph not in selected_tickers:
+                    selected_tickers.append(ph)
 
         try:
             bist_df = yf.Ticker("XU100.IS").history(period="1mo")
@@ -289,7 +348,10 @@ if tarama_tetiklendi:
 
                 gecici_sonuclar.append({
                     "Varlık": gorunen_ad,
+                    "RawTicker": ticker,
                     "Fiyat": f"{bugun_kapanis:.2f} {para_birimi}",
+                    "RawFiyat": bugun_kapanis,
+                    "ParaBirimi": para_birimi,
                     "Günlük %": f"{yuzde_degisim:+.2f}%",
                     "Görec. Güç (1A)": f"{'+' if goreceli_guc > 0 else ''}{goreceli_guc:.2f}% ({karsilastirma})",
                     "Hacim": f"{hacim_carpan:.1f}x",
@@ -299,6 +361,7 @@ if tarama_tetiklendi:
                     "200G Trend": "Boğa 🟩" if uzun_vade_trend else "Ayı 🟥",
                     "Destek / Direnç": f"D: {kisa_destek:.2f} / R: {kisa_direnc:.2f}",
                     "Dinamik Stop": f"{dinamik_stop:.2f} {para_birimi}",
+                    "RawStop": dinamik_stop,
                     "Hedef 1 / 2": f"{hedef_1:.2f} / {hedef_2:.2f}",
                     "Önerilen Lot": f"{lot} Adet ({maliyet_hesabi:.0f} {para_birimi})"
                 })
@@ -314,6 +377,62 @@ if tarama_tetiklendi:
 # --- 4. ARAYÜZÜ ÇİZ ---
 if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
+    # --- YENİ BÖLÜM: AKILLI PORTFÖY REHBERİ VE YOL HARİTASI ---
+    user_p_df = st.session_state.user_portfolio_df
+    if not user_p_df.empty:
+        st.subheader("🎯 Size Özel Portföy Yol Haritası ve Öneriler")
+        
+        # Sonuçları pratik bir sözlüğe çevirelim
+        tarama_dict = {s["RawTicker"]: s for s in st.session_state.sonuclar}
+        
+        toplam_portfoy_degeri = 0
+        oneriler_sayisi = 0
+        
+        for index, row in user_p_df.iterrows():
+            v_adi = row["Varlık"]
+            v_adet = row["Adet"]
+            v_maliyet = row["Maliyet"]
+            
+            if v_adi in tarama_dict:
+                item = tarama_dict[v_adi]
+                anlik_fiyat = item["RawFiyat"]
+                p_birimi = item["ParaBirimi"]
+                anlik_deger = v_adet * anlik_fiyat
+                toplam_portfoy_degeri += anlik_deger
+                kar_zarar_ yuzde = ((anlik_fiyat - v_maliyet) / v_maliyet) * 100 if v_maliyet > 0 else 0
+                
+                sinyal_metni = item["Nihai Sinyal"]
+                stop_seviyesi = item["RawStop"]
+                
+                # Rehberlik mantığı
+                aksiyon_tipi = "Nötr / Takipte Kal ⚖️"
+                renk_kodu = "#3498db"
+                tavsiye = "Mevcut trendde pozisyonunuzu koruyabilirsiniz."
+                
+                if "KAR REALİZASYONU" in sinyal_metni or anlik_fiyat >= stop_seviyesi * 1.35 and kar_zarar_yuzde > 20:
+                    aksiyon_tipi = "Kar Realizasyonu Önerilir 🔴"
+                    renk_kodu = "#e74c3c"
+                    tavsiye = f"Varlık direnç bölgesinde ve aşırı alımda (%{kar_zarar_yuzde:.1f} karda). Pozisyonun bir kısmını nakde çevirebilirsiniz."
+                elif anlik_fiyat <= stop_seviyesi:
+                    aksiyon_tipi = "ACİL STOP / ZARAR KES 🛑"
+                    renk_kodu = "#c0392b"
+                    tavsiye = f"Fiyat kritik dinamik stop seviyesinin ({stop_seviyesi:.2f} {p_birimi}) altına sarktı. Sermayenizi korumak için gözden geçirin."
+                elif "KUSURSUZ ALIM" in sinyal_metni or "KADEMELİ ALIM" in sinyal_metni:
+                    aksiyon_tipi = "Maliyet Düşürme / Ekleme Fırsatı 🔵"
+                    renk_kodu = "#2ecc71"
+                    tavsiye = f"Zaten portföyünüzde olan bu varlık şu an dip/destek bölgesinde. Kademeli alım ile ortalamanızı iyileştirebilirsiniz."
+
+                st.markdown(f"""
+                <div style="background-color: #1E1E1E; padding: 15px; border-radius: 8px; border-left: 5px solid {renk_kodu}; margin-bottom: 10px;">
+                    <b>{v_adi}</b> | Adet: {v_adet} | Maliyet: {v_maliyet} {p_birimi} | Güncel Fiyat: {anlik_fiyat:.2f} {p_birimi} (<b>%{kar_zarar_yuzde:+.1f}</b>)<br>
+                    <b>Stratejik Durum:</b> <span style="color:{renk_kodu};">{aksiyon_tipi}</span><br>
+                    <span style="color: #AAAAAA; font-size: 13px;">💡 <b>Yol Haritası:</b> {tavsiye}</span>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        st.markdown(f"**Toplam Portföy Piyasa Değeri Özeti:** ~{toplam_portfoy_degeri:,.2f} (Hesaplanan varlıklar üzerinden)")
+        st.markdown("---")
+
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -347,7 +466,7 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
     df_sonuc = pd.DataFrame(st.session_state.sonuclar)
     
-    # --- YENİ EKLENEN FİLTRELEME ÖZELLİĞİ ---
+    # Sadece Alım Fırsatları Filtresi
     sadece_alim = st.checkbox("🎯 Sadece Alım Fırsatlarını Göster (Kusursuz / Kademeli Sinyaller)", value=False)
     
     if sadece_alim and not df_sonuc.empty:
@@ -356,6 +475,9 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
     if df_sonuc.empty:
         st.warning("Seçtiğiniz kriterlere uygun alım fırsatı bulunamadı.")
     else:
+        # Görselleştirme tablosundan gizli raw sütunları çıkaralım
+        gosterge_df = df_sonuc.drop(columns=["RawTicker", "RawFiyat", "ParaBirimi", "RawStop"], errors='ignore')
+
         def color_dataframe(row):
             color = ''
             if '🟢' in str(row['Nihai Sinyal']) or '🔵' in str(row['Nihai Sinyal']):
@@ -364,7 +486,7 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
                 color = 'background-color: rgba(192, 57, 43, 0.15)'
             return [color] * len(row)
 
-        styled_df = df_sonuc.style.apply(color_dataframe, axis=1)
+        styled_df = gosterge_df.style.apply(color_dataframe, axis=1)
         st.dataframe(styled_df, use_container_width=True)
         
         st.markdown("---")
@@ -398,4 +520,4 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
                 st.caption("RSI 70 Üzeri: Aşırı Alım | RSI 30 Altı: Aşırı Satım")
 
 elif not st.session_state.tarama_durumu:
-    st.info("👈 Başlamak için sol menüden kontrol panelini düzenleyebilir ve **'Piyasayı Tara'** butonuna tıklayabilirsin.")
+    st.info("👈 Başlamak için sol menüden kontrol panelini düzenleyebilir, kendi varlıklarınızı portföye ekleyebilir ve **'Piyasayı Tara'** butonuna tıklayabilirsiniz.")
