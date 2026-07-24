@@ -2,114 +2,299 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
-# Ana sayfa ayarı
-st.set_page_config(page_title="Karar Destek Sistemi", layout="wide")
+# --- SESSİON STATE (HAFIZA) BAŞLATMA ---
+if "tarama_durumu" not in st.session_state:
+    st.session_state.tarama_durumu = False
+if "sonuclar" not in st.session_state:
+    st.session_state.sonuclar = []
+if "ham_veriler" not in st.session_state:
+    st.session_state.ham_veriler = {}
+if "boga_sayisi" not in st.session_state:
+    st.session_state.boga_sayisi = 0
+if "alim_firsati" not in st.session_state:
+    st.session_state.alim_firsati = 0
 
-# --- KULLANICI ARAYÜZÜ İSİMLENDİRMELERİ ---
-TICKER_ISIMLERI = {
-    "FROTO.IS": "Ford Otosan (FROTO)",
-    "GC=F": "Ons Altın (Global)",
-    "XU100.IS": "BIST 100 Endeksi",
-    "THYAO.IS": "Türk Hava Yolları"
+# --- 1. SAYFA YAPILANDIRMASI VE CSS ---
+st.set_page_config(
+    page_title="Hibrit Portföy Komuta Merkezi",
+    page_icon="📈",
+    layout="wide"
+)
+
+st.markdown("""
+<style>
+    .kpi-card {
+        background-color: #1E1E1E;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        border: 1px solid #333;
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+    }
+    .kpi-title { font-size: 14px; color: #AAAAAA; }
+    .kpi-value { font-size: 24px; font-weight: bold; color: #FFFFFF; }
+    .kpi-highlight-green { color: #00FF00; }
+    .kpi-highlight-red { color: #FF4444; }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("📈 Hibrit Portföy Komuta Merkezi")
+st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Durum:** Canlı Piyasa & Risk Motoru Aktif")
+st.markdown("---")
+
+# --- 2. KENAR ÇUBUĞU ---
+st.sidebar.header("⚙️ Portföy & Risk Parametreleri")
+bist_kasa = st.sidebar.number_input("BIST Sanal Kasa (TL)", value=100000, step=10000)
+nasdaq_kasa = st.sidebar.number_input("NASDAQ Sanal Kasa ($)", value=10000, step=1000)
+risk_orani = st.sidebar.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📋 Hazır Portföy Seçimi")
+
+preset_options = {
+    "Kendi Seçimim (Standart)": ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"],
+    "BIST Sanayi & Otomotiv": ["FROTO.IS", "TOASO.IS", "TUPRS.IS", "EREGL.IS", "DOAS.IS", "ASELS.IS"],
+    "ABD Teknoloji (Mag 7)": ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA"],
+    "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL"]
 }
 
-# --- SESSION STATE (Sayfa yenilenince sıfırlanmayı önlemek için) ---
-if 'secili_varlik' not in st.session_state:
-    st.session_state['secili_varlik'] = "FROTO.IS"
+secilen_kategori = st.sidebar.selectbox("Hızlı Tarama Profili", list(preset_options.keys()))
+default_tickers = preset_options[secilen_kategori]
 
-# Sekmeleri oluşturuyoruz
-tab1, tab2 = st.tabs(["📊 Anlık Takip ve RSI", "⚙️ Strateji Backtesti"])
+selected_tickers = st.sidebar.multiselect("Takip Edilecek Varlıklar", default_tickers, default=default_tickers)
 
-# ==========================================
-# SEKME 1: ANA UYGULAMA (Fiyat ve RSI)
-# ==========================================
-with tab1:
-    st.header("Anlık Piyasa Verileri ve Teknik Analiz")
+st.sidebar.markdown("---")
+st.sidebar.subheader("➕ Anlık Hisse Ekle")
+ek_hisse_input = st.sidebar.text_input("Eklemek istediğiniz kod(lar):", placeholder="Örn: AKBNK.IS, GC=F")
+
+if ek_hisse_input:
+    eklenenler = [h.strip().upper() for h in ek_hisse_input.replace(",", " ").split() if h.strip()]
+    for h in eklenenler:
+        if h not in selected_tickers:
+            selected_tickers.append(h)
+    st.sidebar.success(f"Eklendi: {', '.join(eklenenler)}")
+
+def style_dataframe(row):
+    color = ''
+    if '🟢' in row['Nihai Sinyal'] or '🔵' in row['Nihai Sinyal']:
+        color = 'background-color: rgba(39, 174, 96, 0.2)'
+    elif '🛑' in row['Nihai Sinyal'] or '🔴' in row['Nihai Sinyal']:
+        color = 'background-color: rgba(192, 57, 43, 0.2)'
+    return [color] * len(row)
+
+# --- 3. ANA TARAMA MOTORU ---
+if st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary"):
     
-    # Kullanıcı seçimi (Format func ile ekranda güzel isimleri gösteriyoruz)
-    secim = st.selectbox(
-        "Analiz Edilecek Varlığı Seçin", 
-        options=list(TICKER_ISIMLERI.keys()), 
-        format_func=lambda x: TICKER_ISIMLERI[x],
-        index=list(TICKER_ISIMLERI.keys()).index(st.session_state['secili_varlik'])
-    )
-    st.session_state['secili_varlik'] = secim
-    
-    if st.button("Verileri Getir"):
-        with st.spinner("Piyasa verileri çekiliyor..."):
-            # Son 3 aylık veriyi çek
-            df_main = yf.download(st.session_state['secili_varlik'], period="3mo")
-            
-            if not df_main.empty:
-                # Son fiyatı ve günlük değişimi al
-                son_fiyat = float(df_main['Close'].iloc[-1])
-                onceki_fiyat = float(df_main['Close'].iloc[-2])
-                degisim = ((son_fiyat - onceki_fiyat) / onceki_fiyat) * 100
-                
-                # RSI Hesaplama (14 Günlük)
-                delta = df_main['Close'].diff()
-                kazanc = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                kayip = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                rs = kazanc / kayip
-                df_main['RSI'] = 100 - (100 / (1 + rs))
-                son_rsi = float(df_main['RSI'].iloc[-1])
-                
-                # Metrikleri Ekrana Bas
-                colA, colB = st.columns(2)
-                colA.metric(
-                    label=f"Güncel Fiyat ({TICKER_ISIMLERI[st.session_state['secili_varlik']]})", 
-                    value=f"{son_fiyat:.2f}", 
-                    delta=f"% {degisim:.2f}"
-                )
-                colB.metric(
-                    label="RSI (14 Günlük)", 
-                    value=f"{son_rsi:.2f}",
-                    delta="Aşırı Alım Bölgesi!" if son_rsi > 70 else ("Aşırı Satım Bölgesi!" if son_rsi < 30 else "Nötr"),
-                    delta_color="inverse" if (son_rsi > 70 or son_rsi < 30) else "off"
-                )
-                
-                st.subheader("Son 3 Aylık Fiyat ve RSI Trendi")
-                st.line_chart(df_main[['Close']])
-                st.area_chart(df_main[['RSI']])
+    with st.spinner("Piyasa verileri çekiliyor, teknik göstergeler hesaplanıyor..."):
+        gecici_sonuclar = []
+        gecici_ham_veriler = {}
+        boga_sayisi = 0
+        alim_firsati = 0
 
-# ==========================================
-# SEKME 2: BACKTEST MOTORU
-# ==========================================
-with tab2:
-    st.header("📈 SMA Kesişimi Backtest Motoru")
+        for ticker in selected_tickers:
+            try:
+                stock = yf.Ticker(ticker)
+                
+                df_weekly = stock.history(period="1y", interval="1wk")
+                haftalik_trend_pozitif = True
+                haftalik_durum = "Bilinmiyor"
+                if not df_weekly.empty and len(df_weekly) >= 21:
+                    df_weekly['EMA_9'] = df_weekly['Close'].ewm(span=9, adjust=False).mean()
+                    df_weekly['EMA_21'] = df_weekly['Close'].ewm(span=21, adjust=False).mean()
+                    haftalik_trend_pozitif = df_weekly['EMA_9'].iloc[-1] > df_weekly['EMA_21'].iloc[-1]
+                    haftalik_durum = "Boğa 🟩" if haftalik_trend_pozitif else "Ayı 🟥"
+
+                df_long = stock.history(period="1y")
+                
+                if isinstance(df_long.columns, pd.MultiIndex):
+                    df_long.columns = df_long.columns.droplevel(1)
+                    
+                if df_long.empty or len(df_long) < 50:
+                    continue
+                    
+                para_birimi = "TL" if ".IS" in ticker else "$"
+                is_bist = ".IS" in ticker
+                
+                close_series = df_long['Close'].dropna()
+                if close_series.empty:
+                    continue
+                    
+                bugun_kapanis = close_series.iloc[-1]
+                dun_kapanis = close_series.iloc[-2] if len(close_series) >= 2 else bugun_kapanis
+                yuzde_degisim = ((bugun_kapanis - dun_kapanis) / dun_kapanis) * 100 if dun_kapanis > 0 else 0.0
+
+                df_long['EMA_9'] = df_long['Close'].ewm(span=9, adjust=False).mean()
+                df_long['EMA_21'] = df_long['Close'].ewm(span=21, adjust=False).mean()
+                df_long['SMA_200'] = df_long['Close'].rolling(window=200).mean()
+                sma_200 = df_long['SMA_200'].iloc[-1] if len(df_long) >= 200 and not pd.isna(df_long['SMA_200'].iloc[-1]) else bugun_kapanis
+                uzun_vade_trend = bugun_kapanis > sma_200
+
+                # RSI Hesabı
+                delta = df_long['Close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                df_long['RSI'] = 100 - (100 / (1 + rs))
+                rsi = df_long['RSI'].iloc[-1]
+                if pd.isna(rsi): rsi = 50.0
+                
+                gecici_ham_veriler[ticker] = df_long[['Close', 'Volume', 'RSI']].copy()
+                
+                macd_serisi = df_long['Close'].ewm(span=12).mean() - df_long['Close'].ewm(span=26).mean()
+                macd = macd_serisi.iloc[-1] if not macd_serisi.empty else 0
+                signal = macd_serisi.ewm(span=9).mean().iloc[-1] if not macd_serisi.empty else 0
+
+                bb_mid = df_long['Close'].rolling(window=20).mean()
+                bb_std = df_long['Close'].rolling(window=20).std()
+                bb_alt = (bb_mid - (bb_std * 2)).iloc[-1]
+                bb_ust = (bb_mid + (bb_std * 2)).iloc[-1]
+                if pd.isna(bb_alt): bb_alt = bugun_kapanis * 0.95
+                if pd.isna(bb_ust): bb_ust = bugun_kapanis * 1.05
+
+                vol_sma_20 = df_long['Volume'].rolling(window=20).mean().iloc[-1] if 'Volume' in df_long else 0
+                hacim_carpan = df_long['Volume'].iloc[-1] / vol_sma_20 if vol_sma_20 and vol_sma_20 > 0 else 1.0
+                hacim_onay = df_long['Volume'].iloc[-1] > vol_sma_20 if vol_sma_20 else False
+
+                high_low = df_long['High'] - df_long['Low']
+                high_close = np.abs(df_long['High'] - df_long['Close'].shift())
+                low_close = np.abs(df_long['Low'] - df_long['Close'].shift())
+                atr_serisi = np.max(pd.concat([high_low, high_close, low_close], axis=1), axis=1).rolling(14).mean()
+                atr = atr_serisi.iloc[-1] if not atr_serisi.empty and not pd.isna(atr_serisi.iloc[-1]) else (bugun_kapanis * 0.03)
+                
+                dinamik_stop = bugun_kapanis - (atr * 1.5)
+                hedef_1 = bugun_kapanis + (atr * 2.0)
+                hedef_2 = bugun_kapanis + (atr * 4.0)
+
+                son_bir_ay = df_long.tail(30)
+                kisa_direnc = son_bir_ay['High'].max() if not son_bir_ay.empty else bugun_kapanis * 1.05
+                kisa_destek = son_bir_ay['Low'].min() if not son_bir_ay.empty else bugun_kapanis * 0.95
+
+                skor = 50
+                e9 = df_long['EMA_9'].iloc[-1]
+                e21 = df_long['EMA_21'].iloc[-1]
+                if e9 > e21: skor += 15
+                else: skor -= 15
+                if macd > signal: skor += 15
+                else: skor -= 15
+                if rsi >= 70: skor -= 10
+                elif rsi <= 30: skor += 10
+                if hacim_onay: skor += 10
+                else: skor -= 10
+                if bugun_kapanis < bb_alt: skor += 15 
+                elif bugun_kapanis > bb_ust: skor -= 15 
+                if haftalik_trend_pozitif: skor += 15
+                else: skor -= 25 
+                if uzun_vade_trend: skor += 15
+                else: skor -= 20
+                skor = max(0, min(100, skor))
+
+                sinyal = "Nötr (İzle) ⚖️"
+                if not haftalik_trend_pozitif and not uzun_vade_trend and skor < 40:
+                    sinyal = "UZAK DUR! 🛑"
+                elif bugun_kapanis > bb_ust and rsi >= 68:
+                    sinyal = "KAR REALİZASYONU 🔴"
+                elif bugun_kapanis <= bb_alt and rsi <= 35 and uzun_vade_trend:
+                    sinyal = "KUSURSUZ ALIM 🟢"
+                    alim_firsati += 1
+                elif rsi <= 40 and uzun_vade_trend:
+                    sinyal = "KADEMELİ ALIM 🔵"
+                    alim_firsati += 1
+                    
+                if uzun_vade_trend:
+                    boga_sayisi += 1
+
+                # Görünen isim düzenlemesi (Ticker yerine şık açıklama)
+                gorunen_ad = "Ons Altın (GC=F)" if ticker == "GC=F" else ticker
+
+                aktif_kasa = bist_kasa if is_bist else nasdaq_kasa
+                risk_tutar = aktif_kasa * risk_orani
+                hisse_risk = bugun_kapanis - dinamik_stop
+                lot = int(risk_tutar / hisse_risk) if hisse_risk > 0 else 0
+                maliyet = lot * bugun_kapanis
+
+                gecici_sonuclar.append({
+                    "Varlık": gorunen_ad,
+                    "Fiyat": f"{bugun_kapanis:.2f} {para_birimi}",
+                    "Günlük %": f"{yuzde_degisim:+.2f}%",
+                    "Hacim": f"{hacim_carpan:.1f}x",
+                    "Skor": f"%{skor}",
+                    "Nihai Sinyal": sinyal,
+                    "Haftalık Yön": haftalik_durum,
+                    "200G Trend": "Boğa 🟩" if uzun_vade_trend else "Ayı 🟥",
+                    "Destek / Direnç": f"D: {kisa_destek:.2f} / R: {kisa_direnc:.2f}",
+                    "Dinamik Stop": f"{dinamik_stop:.2f} {para_birimi}",
+                    "Hedef 1 / 2": f"{hedef_1:.2f} / {hedef_2:.2f}",
+                    "Önerilen Lot": f"{lot} Adet ({maliyet:.0f} {para_birimi})"
+                })
+            except Exception as e:
+                st.error(f"{ticker} analiz hatası: {e}")
+
+        st.session_state.sonuclar = gecici_sonuclar
+        st.session_state.ham_veriler = gecici_ham_veriler
+        st.session_state.boga_sayisi = boga_sayisi
+        st.session_state.alim_firsati = alim_firsati
+        st.session_state.tarama_durumu = True
+
+# --- 4. ARAYÜZÜ ÇİZ ---
+if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
     col1, col2, col3 = st.columns(3)
+    
     with col1:
-        test_ticker = st.text_input("Test Edilecek Sembol (Örn: FROTO.IS)", value="FROTO.IS")
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Taranan Varlık</div>
+            <div class="kpi-value">{len(st.session_state.sonuclar)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
     with col2:
-        kisa_sma = st.number_input("Kısa Periyot (Gün)", value=20, step=1)
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Boğa Trendinde (200G)</div>
+            <div class="kpi-value kpi-highlight-green">{st.session_state.boga_sayisi}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
     with col3:
-        uzun_sma = st.number_input("Uzun Periyot (Gün)", value=50, step=1)
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">Alım Fırsatları</div>
+            <div class="kpi-value">{"🔥 " + str(st.session_state.alim_firsati) if st.session_state.alim_firsati > 0 else "0"}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    df_sonuc = pd.DataFrame(st.session_state.sonuclar)
+    styled_df = df_sonuc.style.apply(style_dataframe, axis=1)
+    st.dataframe(styled_df, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # --- 5. DETAYLI GRAFİK (DRILL-DOWN) ---
+    st.subheader("📊 Varlık Detay Analizi")
+    
+    secili_grafik = st.selectbox("Grafiğini incelemek istediğiniz varlığı seçin:", [s["Varlık"] for s in st.session_state.sonuclar])
+    
+    # Eşleşmeyi bulabilmek için orijinal ticker sözlüğünü veya ad eşlemesini kullanıyoruz
+    aktif_ticker_anahtari = "GC=F" if "Ons Altın" in secili_grafik else secili_grafik
+    
+    if aktif_ticker_anahtari in st.session_state.ham_veriler:
+        grafik_verisi = st.session_state.ham_veriler[aktif_ticker_anahtari]
+        
+        tab1, tab2, tab3 = st.tabs(["📉 Fiyat Hareketi (1 Yıl)", "📊 İşlem Hacmi", "⚡ RSI (Göreceli Güç Endeksi)"])
+        
+        with tab1:
+            st.line_chart(grafik_verisi['Close'], use_container_width=True, color="#2ecc71")
+        with tab2:
+            st.bar_chart(grafik_verisi['Volume'], use_container_width=True, color="#3498db")
+        with tab3:
+            temiz_rsi = grafik_verisi['RSI'].dropna()
+            st.line_chart(temiz_rsi, use_container_width=True, color="#e74c3c")
+            st.caption("RSI 70 Üzeri: Aşırı Alım (Riskli) | RSI 30 Altı: Aşırı Satım (Fırsat)")
 
-    if st.button("Backtesti Başlat"):
-        with st.spinner("Geçmiş veriler analiz ediliyor..."):
-            df_bt = yf.download(test_ticker, period="1y")
-            
-            if not df_bt.empty:
-                df_bt['Kisa_SMA'] = df_bt['Close'].rolling(window=kisa_sma).mean()
-                df_bt['Uzun_SMA'] = df_bt['Close'].rolling(window=uzun_sma).mean()
-                df_bt['Sinyal'] = np.where(df_bt['Kisa_SMA'] > df_bt['Uzun_SMA'], 1, 0)
-                df_bt['Pozisyon'] = df_bt['Sinyal'].shift(1)
-                df_bt['Gunluk_Getiri'] = df_bt['Close'].pct_change()
-                df_bt['Strateji_Getirisi'] = df_bt['Gunluk_Getiri'] * df_bt['Pozisyon']
-                df_bt['Al_Tut_Kümülatif'] = (1 + df_bt['Gunluk_Getiri']).cumprod()
-                df_bt['Strateji_Kümülatif'] = (1 + df_bt['Strateji_Getirisi']).cumprod()
-                
-                df_bt.dropna(inplace=True)
-
-                st.subheader(f"{test_ticker} - Geriye Dönük Performans Özeti")
-                
-                metrik1, metrik2 = st.columns(2)
-                al_tut_son = (df_bt['Al_Tut_Kümülatif'].iloc[-1] - 1) * 100
-                strateji_son = (df_bt['Strateji_Kümülatif'].iloc[-1] - 1) * 100
-                
-                metrik1.metric(label="Pasif Bekleme Getirisi (Al-Tut)", value=f"% {al_tut_son:.2f}")
-                metrik2.metric(label="Algoritma Getirisi", value=f"% {strateji_son:.2f}")
-                
-                st.line_chart(df_bt[['Al_Tut_Kümülatif', 'Strateji_Kümülatif']])
+elif not st.session_state.tarama_durumu:
+    st.info("👈 Başlamak için sol menüden hazır bir profil seçebilir veya hisse ekleyip **'Piyasayı Tara'** butonuna tıklayabilirsin.")
