@@ -14,7 +14,6 @@ def dosyadan_ticker_oku():
             t_list = [line.strip().upper() for line in f if line.strip()]
             if t_list:
                 return t_list
-    # Dosya yoksa varsayılan liste ile başlat ve dosyayı oluştur
     varsayilan = ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"]
     dosyaya_ticker_yaz(varsayilan)
     return varsayilan
@@ -36,7 +35,6 @@ if "boga_sayisi" not in st.session_state:
 if "alim_firsati" not in st.session_state:
     st.session_state.alim_firsati = 0
 
-# "Kendi Seçimim" listesini dosyadan kalıcı olarak yüklüyoruz
 if "custom_tickers" not in st.session_state:
     st.session_state.custom_tickers = dosyadan_ticker_oku()
 
@@ -77,6 +75,24 @@ with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
     nasdaq_kasa = st.number_input("NASDAQ Sanal Kasa ($)", value=10000, step=1000)
     risk_orani = st.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
 
+# --- HİSSE EKLEME CALLBACK FONKSİYONU ---
+def hisse_ekle_callback():
+    input_degeri = st.session_state.get("ek_hisse_input_field", "")
+    if input_degeri.strip():
+        eklenenler = [h.strip().upper() for h in input_degeri.replace(",", " ").split() if h.strip()]
+        yeni_eklendi = False
+        for h in eklenenler:
+            if h not in st.session_state.custom_tickers:
+                st.session_state.custom_tickers.append(h)
+                yeni_eklendi = True
+        
+        if yeni_eklendi:
+            dosyaya_ticker_yaz(st.session_state.custom_tickers)
+            st.sidebar.success(f"Kalıcı olarak eklendi: {', '.join(eklenenler)}")
+        
+        # Enter'a basıldıktan sonra input kutusunu temizle
+        st.session_state["ek_hisse_input_field"] = ""
+
 with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
     preset_options = {
         "Kendi Seçimim (Standart)": st.session_state.custom_tickers,
@@ -106,20 +122,13 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
     
     selected_tickers = st.multiselect("Takip Edilecek Varlıklar", default_tickers, default=default_tickers)
 
-    ek_hisse_input = st.text_input("Eklemek istediğiniz kod(lar):", placeholder="Örn: KCHOL.IS, COIN")
-    if ek_hisse_input:
-        eklenenler = [h.strip().upper() for h in ek_hisse_input.replace(",", " ").split() if h.strip()]
-        yeni_eklendi = False
-        for h in eklenenler:
-            if h not in st.session_state.custom_tickers:
-                st.session_state.custom_tickers.append(h)
-                yeni_eklendi = True
-        
-        if yeni_eklendi:
-            # Listeyi hem hafızaya hem de sabit dosyaya kaydet
-            dosyaya_ticker_yaz(st.session_state.custom_tickers)
-            st.success(f"Kalıcı olarak kaydedildi: {', '.join(eklenenler)}")
-            st.rerun()
+    # Enter'a basıldığında tetiklenen ve kutuyu temizleyen input alanı
+    st.text_input(
+        "Eklemek istediğiniz kod(lar):", 
+        placeholder="Örn: KCHOL.IS, COIN ve Enter", 
+        key="ek_hisse_input_field", 
+        on_change=hisse_ekle_callback
+    )
 
 st.sidebar.markdown("---")
 tarama_tetiklendi = st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary", use_container_width=True)
