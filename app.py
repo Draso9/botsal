@@ -16,7 +16,7 @@ if "boga_sayisi" not in st.session_state:
 if "alim_firsati" not in st.session_state:
     st.session_state.alim_firsati = 0
 
-# --- 1. SAYFA YAPILANDIRMASI VE GELİŞMİŞ CSS ---
+# --- 1. SAYFA YAPILANDIRMASI VE STİL ---
 st.set_page_config(
     page_title="Hibrit Portföy Komuta Merkezi",
     page_icon="📈",
@@ -25,38 +25,20 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Genel Tema İyileştirmeleri */
-    .stApp {
-        background-color: #121212;
-        color: #E0E0E0;
-    }
-    
-    /* 1. Neon ve Parıltılı Gelişmiş KPI Kartları */
+    /* Modern Kart Tasarımı */
     .kpi-card {
-        background: linear-gradient(135deg, #1E1E1E 0%, #2A2A2A 100%);
-        padding: 22px;
-        border-radius: 12px;
+        background-color: #1E1E1E;
+        padding: 20px;
+        border-radius: 10px;
         text-align: center;
         border: 1px solid #333;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-        transition: transform 0.2s ease;
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.5);
     }
-    .kpi-card:hover {
-        border-color: #00FF88;
-        box-shadow: 0 4px 25px rgba(0,255,136,0.15);
-    }
-    .kpi-title { font-size: 13px; color: #999999; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
-    .kpi-value { font-size: 28px; font-weight: bold; color: #FFFFFF; margin-top: 5px; }
-    .kpi-subtext { font-size: 11px; color: #888888; margin-top: 4px; }
-    .kpi-highlight-green { color: #00FF88 !important; text-shadow: 0 0 10px rgba(0,255,136,0.3); }
-    .kpi-highlight-fire { color: #FF5555 !important; text-shadow: 0 0 10px rgba(255,85,85,0.3); }
-
-    /* 2. Özel Sinyal Rozetleri (Badges) */
-    .badge-kusursuz { background-color: rgba(0, 255, 136, 0.15); color: #00FF88; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #00FF88; }
-    .badge-kademeli { background-color: rgba(52, 152, 219, 0.15); color: #3498db; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #3498db; }
-    .badge-kar { background-color: rgba(231, 76, 60, 0.15); color: #e74c3c; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #e74c3c; }
-    .badge-uzak { background-color: rgba(192, 57, 43, 0.3); color: #ff6b6b; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #c0392b; }
-    .badge-notr { background-color: rgba(149, 165, 166, 0.15); color: #bdc3c7; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #7f8c8d; }
+    .kpi-title { font-size: 13px; color: #AAAAAA; text-transform: uppercase; letter-spacing: 1px; }
+    .kpi-value { font-size: 26px; font-weight: bold; color: #FFFFFF; margin-top: 5px; }
+    .kpi-subtext { font-size: 11px; color: #777777; margin-top: 4px; }
+    .kpi-highlight-green { color: #00FF88; }
+    .kpi-highlight-fire { color: #FF5555; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -64,7 +46,7 @@ st.title("📈 Hibrit Portföy Komuta Merkezi")
 st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Durum:** Canlı Piyasa & Risk Motoru Aktif")
 st.markdown("---")
 
-# --- 2. KENAR ÇUBUĞU (AKORDEON YAPISIYLA DÜZENLENDİ) ---
+# --- 2. KENAR ÇUBUĞU (AKORDEON YAPISI) ---
 st.sidebar.header("⚙️ Kontrol Paneli")
 
 with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
@@ -221,7 +203,6 @@ if tarama_tetiklendi:
                 elif goreceli_guc < -5: skor -= 10
                 skor = max(0, min(100, skor))
 
-                # 3. Şık HTML Rozetleri (Badges) Tanımlamaları
                 sinyal = "Nötr (İzle) ⚖️"
                 if not haftalik_trend_pozitif and not uzun_vade_trend and skor < 40:
                     sinyal = "UZAK DUR! 🛑"
@@ -250,7 +231,7 @@ if tarama_tetiklendi:
                     "Günlük %": f"{yuzde_degisim:+.2f}%",
                     "Görec. Güç (1A)": f"{'+' if goreceli_guc > 0 else ''}{goreceli_guc:.2f}% ({karsilastirma})",
                     "Hacim": f"{hacim_carpan:.1f}x",
-                    "Skor": skor, # Sayısal bırakıldı ki bar stili uygulayabilelim
+                    "Skor": f"%{skor}",
                     "Nihai Sinyal": sinyal,
                     "Haftalık Yön": haftalik_durum,
                     "200G Trend": "Boğa 🟩" if uzun_vade_trend else "Ayı 🟥",
@@ -271,7 +252,6 @@ if tarama_tetiklendi:
 # --- 4. ARAYÜZÜ ÇİZ ---
 if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
-    # 1. Neon Parıltılı Gelişmiş KPI Kartları Gösterimi
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -305,22 +285,15 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
     df_sonuc = pd.DataFrame(st.session_state.sonuclar)
     
-    # Skor sütununu yüzde formatına çeviriyoruz
-    df_sonuc['Skor'] = df_sonuc['Skor'].apply(lambda x: f"%{x}")
+    def color_dataframe(row):
+        color = ''
+        if '🟢' in str(row['Nihai Sinyal']) or '🔵' in str(row['Nihai Sinyal']):
+            color = 'background-color: rgba(39, 174, 96, 0.15)'
+        elif '🛑' in str(row['Nihai Sinyal']) or '🔴' in str(row['Nihai Sinyal']):
+            color = 'background-color: rgba(192, 57, 43, 0.15)'
+        return [color] * len(row)
 
-    # 4. Pandas Styler ile Şık Veri Çubukları (Data Bars) ve Renklendirmeler
-    def color_and_bars(s):
-        return ['background-color: rgba(39, 174, 96, 0.15)' if '🟢' in str(v) or '🔵' in str(v) 
-                else 'background-color: rgba(192, 57, 43, 0.15)' if '🛑' in str(v) or '🔴' in str(v) 
-                else '' for v in s]
-
-    styled_df = df_sonuc.style.apply(color_and_bars, subset=['Nihai Sinyal']).bar(
-        subset=['Skor'], 
-        color='#2ecc71', 
-        vmin=0, 
-        vmax=100
-    )
-    
+    styled_df = df_sonuc.style.apply(color_dataframe, axis=1)
     st.dataframe(styled_df, use_container_width=True)
     
     st.markdown("---")
