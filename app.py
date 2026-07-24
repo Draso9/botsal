@@ -16,6 +16,10 @@ if "boga_sayisi" not in st.session_state:
 if "alim_firsati" not in st.session_state:
     st.session_state.alim_firsati = 0
 
+# "Kendi Seçimim" listesini kalıcı hale getirmek için session_state tanımlıyoruz
+if "custom_tickers" not in st.session_state:
+    st.session_state.custom_tickers = ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"]
+
 # --- 1. SAYFA YAPILANDIRMASI VE STİL ---
 st.set_page_config(
     page_title="Hibrit Portföy Komuta Merkezi",
@@ -25,7 +29,6 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Modern Kart Tasarımı */
     .kpi-card {
         background-color: #1E1E1E;
         padding: 20px;
@@ -55,31 +58,57 @@ with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
     risk_orani = st.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
 
 with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
+    # Genişletilmiş ve zenginleştirilmiş hazır listeler
     preset_options = {
-        "Kendi Seçimim (Standart)": ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"],
-        "BIST Sanayi & Otomotiv": ["FROTO.IS", "TOASO.IS", "TUPRS.IS", "EREGL.IS", "DOAS.IS", "ASELS.IS"],
-        "ABD Teknoloji (Mag 7)": ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA"],
-        "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL"]
+        "Kendi Seçimim (Standart)": st.session_state.custom_tickers,
+        "BIST 30 (Ana Hisseler)": [
+            "THYAO.IS", "GARAN.IS", "AKBNK.IS", "ISCTR.IS", "YKBNK.IS", 
+            "EREGL.IS", "KRDMD.IS", "PETKM.IS", "TUPRS.IS", "FROTO.IS", 
+            "TOASO.IS", "ARCLK.IS", "BIMAS.IS", "MGROS.IS", "SOKM.IS", 
+            "ASELS.IS", "ENKAI.IS", "SISE.IS", "KCHOL.IS", "SAHOL.IS"
+        ],
+        "BIST 100 (Genişletilmiş Seçki)": [
+            "THYAO.IS", "GARAN.IS", "AKBNK.IS", "ISCTR.IS", "YKBNK.IS", 
+            "EREGL.IS", "KRDMD.IS", "PETKM.IS", "TUPRS.IS", "FROTO.IS", 
+            "TOASO.IS", "ARCLK.IS", "BIMAS.IS", "MGROS.IS", "SOKM.IS", 
+            "ASELS.IS", "ENKAI.IS", "SISE.IS", "KCHOL.IS", "SAHOL.IS",
+            "PGSUS.IS", "TOASO.IS", "ODAS.IS", "OYAKC.IS", "SASA.IS", 
+            "HEKTS.IS", "KONTR.IS", "ASTOR.IS", "EUPWR.IS", "ALARK.IS"
+        ],
+        "ABD En Bilindik / Teknoloji (US)": [
+            "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", 
+            "AMD", "INTC", "NFLX", "ADBE", "PYPL", "QCOM", "AMAT", "BA"
+        ],
+        "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
     }
 
     secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()))
     default_tickers = preset_options[secilen_kategori]
+    
+    # Çoklu seçim listesi
     selected_tickers = st.multiselect("Takip Edilecek Varlıklar", default_tickers, default=default_tickers)
 
-    ek_hisse_input = st.text_input("Eklemek istediğiniz kod(lar):", placeholder="Örn: AKBNK.IS, GC=F")
+    # Yeni hisse ekleme alanı
+    ek_hisse_input = st.text_input("Eklemek istediğiniz kod(lar):", placeholder="Örn: KCHOL.IS, COIN")
     if ek_hisse_input:
         eklenenler = [h.strip().upper() for h in ek_hisse_input.replace(",", " ").split() if h.strip()]
+        yeni_eklendi = False
         for h in eklenenler:
-            if h not in selected_tickers:
-                selected_tickers.append(h)
-        st.success(f"Eklendi: {', '.join(eklenenler)}")
+            # Sadece "Kendi Seçimim" listesine ve kalıcı hafızaya eklenir
+            if h not in st.session_state.custom_tickers:
+                st.session_state.custom_tickers.append(h)
+                yeni_eklendi = True
+        
+        if yeni_eklendi:
+            st.success(f"Kalıcı olarak 'Kendi Seçimim' listesine eklendi: {', '.join(eklenenler)}")
+            st.rerun()
 
 st.sidebar.markdown("---")
 tarama_tetiklendi = st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary", use_container_width=True)
 
 # --- 3. ANA TARAMA MOTORU ---
 if tarama_tetiklendi:
-    with st.spinner("Piyasa ve endeks verileri işleniyor..."):
+    with st.spinner("Piyasa ve endeks verileri taranıyor, göstergeler hesaplanıyor..."):
         gecici_sonuclar = []
         gecici_ham_veriler = {}
         boga_sayisi = 0
@@ -117,7 +146,7 @@ if tarama_tetiklendi:
                     
                 para_birimi = "TL" if ".IS" in ticker else "$"
                 is_bist = ".IS" in ticker
-                is_emtia = ticker in ["GC=F", "SLV", "CPER", "PALL"]
+                is_emtia = ticker in ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
                 
                 close_series = df_long['Close'].dropna()
                 if close_series.empty:
@@ -126,7 +155,6 @@ if tarama_tetiklendi:
                 bugun_kapanis = close_series.iloc[-1]
                 dun_kapanis = close_series.iloc[-2] if len(close_series) >= 2 else bugun_kapanis
                 
-                # Günlük yüzde değişimi Yahoo'nun resmi önceki kapanış verisiyle garantiliyoruz
                 try:
                     onceki_kapanis = stock.info.get('regularMarketPreviousClose', dun_kapanis)
                     if not onceki_kapanis or pd.isna(onceki_kapanis):
@@ -167,7 +195,7 @@ if tarama_tetiklendi:
                 
                 macd_serisi = df_long['Close'].ewm(span=12).mean() - df_long['Close'].ewm(span=26).mean()
                 macd = macd_serisi.iloc[-1] if not macd_serisi.empty else 0
-                signal = macd_serisi.ewm(span=9).mean().iloc[-1] if not macd_serisi.empty else 0
+                signal_val = macd_serisi.ewm(span=9).mean().iloc[-1] if not macd_serisi.empty else 0
 
                 bb_mid = df_long['Close'].rolling(window=20).mean()
                 bb_std = df_long['Close'].rolling(window=20).std()
@@ -198,7 +226,7 @@ if tarama_tetiklendi:
                 e21 = df_long['EMA_21'].iloc[-1]
                 if e9 > e21: skor += 15
                 else: skor -= 15
-                if macd > signal: skor += 15
+                if macd > signal_val: skor += 15
                 else: skor -= 15
                 if rsi >= 70: skor -= 10
                 elif rsi <= 30: skor += 10
@@ -250,7 +278,7 @@ if tarama_tetiklendi:
                     "Önerilen Lot": f"{lot} Adet ({maliyet_hesabi:.0f} {para_birimi})"
                 })
             except Exception as e:
-                st.error(f"{ticker} analiz hatası: {e}")
+                pass
 
         st.session_state.sonuclar = gecici_sonuclar
         st.session_state.ham_veriler = gecici_ham_veriler
@@ -325,7 +353,7 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
                 use_container_width=True, 
                 color=["#00FF88", "#FF5555", "#FFB300"]
             )
-            st.caption("🟢 Fiyat | 🔴 EMA-9 (Kısa Vade) | 🟠 EMA-21 (Orta Vade) — Kırmızının turuncuyu yukarı kesmesi yükseliş sinyalidir.")
+            st.caption("🟢 Fiyat | 🔴 EMA-9 (Kısa Vade) | 🟠 EMA-21 (Orta Vade)")
             
         with tab2:
             st.bar_chart(grafik_verisi['Volume'], use_container_width=True, color="#3498db")
@@ -333,7 +361,7 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
         with tab3:
             temiz_rsi = grafik_verisi['RSI'].dropna()
             st.line_chart(temiz_rsi, use_container_width=True, color="#FF5555")
-            st.caption("RSI 70 Üzeri: Aşırı Alım (Riskli) | RSI 30 Altı: Aşırı Satım (Fırsat)")
+            st.caption("RSI 70 Üzeri: Aşırı Alım | RSI 30 Altı: Aşırı Satım")
 
 elif not st.session_state.tarama_durumu:
     st.info("👈 Başlamak için sol menüden kontrol panelini düzenleyebilir ve **'Piyasayı Tara'** butonuna tıklayabilirsin.")
