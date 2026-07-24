@@ -7,6 +7,7 @@ import os
 
 # --- DOSYA TABANLI KALICI HAFIZA FONKSİYONLARI ---
 TICKER_DOSYASI = "custom_tickers.txt"
+VARSAYILAN_TICKERS = ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"]
 
 def dosyadan_ticker_oku():
     if os.path.exists(TICKER_DOSYASI):
@@ -14,9 +15,8 @@ def dosyadan_ticker_oku():
             t_list = [line.strip().upper() for line in f if line.strip()]
             if t_list:
                 return t_list
-    varsayilan = ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"]
-    dosyaya_ticker_yaz(varsayilan)
-    return varsayilan
+    dosyaya_ticker_yaz(VARSAYILAN_TICKERS)
+    return VARSAYILAN_TICKERS
 
 def dosyaya_ticker_yaz(t_list):
     with open(TICKER_DOSYASI, "w", encoding="utf-8") as f:
@@ -136,6 +136,13 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
         key="ek_hisse_input_field", 
         on_change=hisse_ekle_callback
     )
+
+    # --- YENİ EKLENEN SIFIRLAMA BUTONU ---
+    if st.button("🔄 Özel Listeyi Varsayılana Sıfırla"):
+        st.session_state.custom_tickers = VARSAYILAN_TICKERS.copy()
+        dosyaya_ticker_yaz(VARSAYILAN_TICKERS)
+        st.success("Özel liste fabrika ayarlarına döndürüldü!")
+        st.rerun()
 
 st.sidebar.markdown("---")
 tarama_tetiklendi = st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary", use_container_width=True)
@@ -354,7 +361,6 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # --- YENİ EKLENEN STRATEJİK REHBER ALANI ---
     with st.expander("📖 Terminal Tablosu ve Sinyaller Nasıl Yorumlanmalı? (Stratejik Rehber)", expanded=False):
         st.markdown("""
         <div class="info-box">
@@ -390,7 +396,6 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
         
         st.markdown("---")
         
-        # --- 5. DETAYLI GRAFİK (DRILL-DOWN) ---
         st.subheader("📊 Varlık Detay Analizi")
         
         secili_grafik = st.selectbox("Grafiğini incelemek istediğiniz varlığı seçin:", [s["Varlık"] for s in st.session_state.sonuclar])
