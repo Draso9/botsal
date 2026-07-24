@@ -3,6 +3,26 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import os
+
+# --- DOSYA TABANLI KALICI HAFIZA FONKSİYONLARI ---
+TICKER_DOSYASI = "custom_tickers.txt"
+
+def dosyadan_ticker_oku():
+    if os.path.exists(TICKER_DOSYASI):
+        with open(TICKER_DOSYASI, "r", encoding="utf-8") as f:
+            t_list = [line.strip().upper() for line in f if line.strip()]
+            if t_list:
+                return t_list
+    # Dosya yoksa varsayılan liste ile başlat ve dosyayı oluştur
+    varsayilan = ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"]
+    dosyaya_ticker_yaz(varsayilan)
+    return varsayilan
+
+def dosyaya_ticker_yaz(t_list):
+    with open(TICKER_DOSYASI, "w", encoding="utf-8") as f:
+        for t in t_list:
+            f.write(f"{t}\n")
 
 # --- SESSİON STATE (HAFIZA) BAŞLATMA ---
 if "tarama_durumu" not in st.session_state:
@@ -16,9 +36,9 @@ if "boga_sayisi" not in st.session_state:
 if "alim_firsati" not in st.session_state:
     st.session_state.alim_firsati = 0
 
-# "Kendi Seçimim" listesini kalıcı hale getirmek için session_state tanımlıyoruz
+# "Kendi Seçimim" listesini dosyadan kalıcı olarak yüklüyoruz
 if "custom_tickers" not in st.session_state:
-    st.session_state.custom_tickers = ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"]
+    st.session_state.custom_tickers = dosyadan_ticker_oku()
 
 # --- 1. SAYFA YAPILANDIRMASI VE STİL ---
 st.set_page_config(
@@ -58,7 +78,6 @@ with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
     risk_orani = st.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
 
 with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
-    # Genişletilmiş ve zenginleştirilmiş hazır listeler
     preset_options = {
         "Kendi Seçimim (Standart)": st.session_state.custom_tickers,
         "BIST 30 (Ana Hisseler)": [
@@ -72,7 +91,7 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
             "EREGL.IS", "KRDMD.IS", "PETKM.IS", "TUPRS.IS", "FROTO.IS", 
             "TOASO.IS", "ARCLK.IS", "BIMAS.IS", "MGROS.IS", "SOKM.IS", 
             "ASELS.IS", "ENKAI.IS", "SISE.IS", "KCHOL.IS", "SAHOL.IS",
-            "PGSUS.IS", "TOASO.IS", "ODAS.IS", "OYAKC.IS", "SASA.IS", 
+            "PGSUS.IS", "ODAS.IS", "OYAKC.IS", "SASA.IS", 
             "HEKTS.IS", "KONTR.IS", "ASTOR.IS", "EUPWR.IS", "ALARK.IS"
         ],
         "ABD En Bilindik / Teknoloji (US)": [
@@ -85,22 +104,21 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
     secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()))
     default_tickers = preset_options[secilen_kategori]
     
-    # Çoklu seçim listesi
     selected_tickers = st.multiselect("Takip Edilecek Varlıklar", default_tickers, default=default_tickers)
 
-    # Yeni hisse ekleme alanı
     ek_hisse_input = st.text_input("Eklemek istediğiniz kod(lar):", placeholder="Örn: KCHOL.IS, COIN")
     if ek_hisse_input:
         eklenenler = [h.strip().upper() for h in ek_hisse_input.replace(",", " ").split() if h.strip()]
         yeni_eklendi = False
         for h in eklenenler:
-            # Sadece "Kendi Seçimim" listesine ve kalıcı hafızaya eklenir
             if h not in st.session_state.custom_tickers:
                 st.session_state.custom_tickers.append(h)
                 yeni_eklendi = True
         
         if yeni_eklendi:
-            st.success(f"Kalıcı olarak 'Kendi Seçimim' listesine eklendi: {', '.join(eklenenler)}")
+            # Listeyi hem hafızaya hem de sabit dosyaya kaydet
+            dosyaya_ticker_yaz(st.session_state.custom_tickers)
+            st.success(f"Kalıcı olarak kaydedildi: {', '.join(eklenenler)}")
             st.rerun()
 
 st.sidebar.markdown("---")
