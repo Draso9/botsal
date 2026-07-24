@@ -74,13 +74,13 @@ if "custom_tickers" not in st.session_state:
     st.session_state.custom_tickers = dosyadan_ticker_oku()
 
 st.title("📈 Hibrit Portföy Komuta Merkezi")
-st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Mod:** Dosya Tabanlı Kalıcı Hafıza & Canlı Piyasa")
+st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Mod:** Kararlı Dosya & Profil Yönetimi")
 st.markdown("---")
 
 # --- 2. KENAR ÇUBUĞU (KONTROL PANELİ) ---
 st.sidebar.header("⚙️ Kontrol Paneli")
 
-with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
+with st.sidebar.expander("💰 Kasa and Risk Parametreleri", expanded=True):
     bist_kasa = st.number_input("BIST Sanal Kasa (TL)", value=100000, step=10000)
     nasdaq_kasa = st.number_input("NASDAQ Sanal Kasa ($)", value=10000, step=1000)
     risk_orani = st.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
@@ -97,9 +97,8 @@ def hisse_ekle_callback():
                 yeni_eklendi = True
         
         if yeni_eklendi:
-            # Doğrudan dosyaya kaydet ki kalıcı olsun
             dosyaya_ticker_yaz(st.session_state.custom_tickers)
-            st.sidebar.success(f"Kalıcı olarak eklendi: {', '.join(eklenenler)}")
+            st.sidebar.success(f"Eklendi ve kaydedildi: {', '.join(eklenenler)}")
         
         st.session_state["ek_hisse_input_field"] = ""
 
@@ -135,12 +134,19 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
         "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
     }
 
-    secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()))
+    secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()), key="profil_secim_kutusu")
     default_tickers = preset_options[secilen_kategori]
     
-    # Multiselect içine kullanıcının eklediklerinin de sorunsuz yüklenmesini sağla
+    # Tüm seçenekler havuzu (profil listesi + kullanıcının özel ekledikleri)
     tum_secenekler = list(set(default_tickers + st.session_state.custom_tickers))
-    selected_tickers = st.multiselect("Takip Edilecek Varlıklar", tum_secenekler, default=st.session_state.custom_tickers)
+    
+    # Profili değiştirdiğinde multiselect içeriğinin o profile ait hisseleri tam olarak seçmesi sağlanıyor
+    selected_tickers = st.multiselect(
+        "Takip Edilecek Varlıklar", 
+        options=tum_secenekler, 
+        default=default_tickers,
+        key="secilen_varliklar_multiselect"
+    )
 
     if st.button("🔄 Listeyi Varsayılana Sıfırla"):
         st.session_state.custom_tickers = VARSAYILAN_TICKERS.copy()
