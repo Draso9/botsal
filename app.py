@@ -60,11 +60,20 @@ st.markdown("""
     .kpi-subtext { font-size: 11px; color: #777777; margin-top: 4px; }
     .kpi-highlight-green { color: #00FF88; }
     .kpi-highlight-fire { color: #FF5555; }
+    .info-box {
+        background-color: #1E1E1E;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 5px solid #3498db;
+        margin-bottom: 15px;
+        font-size: 14px;
+        color: #CCCCCC;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("📈 Hibrit Portföy Komuta Merkezi")
-st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Durum:** Canlı Piyasa & Risk Motoru Aktif")
+st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Durum:** Canlı Piyasa & Sinyal Motoru Aktif")
 st.markdown("---")
 
 # --- 2. KENAR ÇUBUĞU (AKORDEON YAPISI) ---
@@ -345,9 +354,21 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
     st.markdown("<br>", unsafe_allow_html=True)
     
+    # --- YENİ EKLENEN STRATEJİK REHBER ALANI ---
+    with st.expander("📖 Terminal Tablosu ve Sinyaller Nasıl Yorumlanmalı? (Stratejik Rehber)", expanded=False):
+        st.markdown("""
+        <div class="info-box">
+            <b>🎯 Nihai Sinyaller Ne Anlama Geliyor?</b><br>
+            • <b>KUSURSUZ ALIM 🟢:</b> Uzun vadeli trendin (200G) boğa tarafında olduğu, fiyatın Bollinger Alt Bandı'na kadar çekilip RSI göstergesinin aşırı satım bölgesinden tepki verdiği en ideal risk/ödül oranına sahip noktalardır.<br>
+            • <b>KADEMELİ ALIM 🔵:</b> Trend bozulmamıştır ancak fiyat orta vadeli bir düzeltme içindedir; parça parça (kademeli) maliyetlenmek için uygundur.<br>
+            • <b>KAR REALİZASYONU 🔴:</b> Fiyat üst banda dayanmış, RSI şişmiştir. Pozisyonda olanlar için kârı cebe koyma veya ağırlığı azaltma vaktidir.<br>
+            • <b>UZAK DUR! 🛑:</b> Hem haftalık hem uzun vadeli trend aşağı yönlüdür ve momentum zayıftır. Sermayeyi korumak adına bulaşılmamalıdır.<br><br>
+            <b>🛡️ Risk ve Lot Yönetimi:</b> Tablodaki <i>Dinamik Stop</i> seviyesi ATR (oynaklık) bazlı hesaplanır. Önerilen Lot miktarı ise sol menüde belirlediğin kasa büyüklüğü ve işlem başına risk oranına (%2) göre otomatik optimize edilir.
+        </div>
+        """, unsafe_allow_html=True)
+    
     df_sonuc = pd.DataFrame(st.session_state.sonuclar)
     
-    # --- YENİ EKLENEN FİLTRELEME ÖZELLİĞİ ---
     sadece_alim = st.checkbox("🎯 Sadece Alım Fırsatlarını Göster (Kusursuz / Kademeli Sinyaller)", value=False)
     
     if sadece_alim and not df_sonuc.empty:
