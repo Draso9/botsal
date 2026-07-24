@@ -52,7 +52,6 @@ if "boga_sayisi" not in st.session_state:
 if "alim_firsati" not in st.session_state:
     st.session_state.alim_firsati = 0
 
-# Her kullanıcının tarayıcısında kendine ait izole takip listesi
 if "user_tickers" not in st.session_state:
     st.session_state.user_tickers = VARSAYILAN_TICKERS.copy()
 
@@ -80,11 +79,20 @@ def hisse_ekle_callback():
                 yeni_eklendi = True
         
         if yeni_eklendi:
-            st.sidebar.success(f"Listene eklendi: {', '.join(eklenenler)}")
+            st.sidebar.success(f"Listeye eklendi: {', '.join(eklenenler)}")
         
         st.session_state["ek_hisse_input_field"] = ""
 
 with st.sidebar.expander("📋 Kişisel Varlık Seçimi ve Profiller", expanded=True):
+    
+    # Önce metin kutusu ile kullanıcı dilediği kodu havuza ekleyebilsin
+    st.text_input(
+        "Yeni Hisse / Varlık Ekle:", 
+        placeholder="Örn: ALFAS.IS, INTC", 
+        key="ek_hisse_input_field", 
+        on_change=hisse_ekle_callback
+    )
+
     preset_options = {
         "Kendi Listem (Özel)": st.session_state.user_tickers,
         "BIST 30 (Ana Hisseler)": [
@@ -99,7 +107,7 @@ with st.sidebar.expander("📋 Kişisel Varlık Seçimi ve Profiller", expanded=
             "TOASO.IS", "ARCLK.IS", "BIMAS.IS", "MGROS.IS", "SOKM.IS", 
             "ASELS.IS", "ENKAI.IS", "SISE.IS", "KCHOL.IS", "SAHOL.IS",
             "PGSUS.IS", "ODAS.IS", "OYAKC.IS", "SASA.IS", 
-            "HEKTS.IS", "KONTR.IS", "ASTOR.IS", "EUPWR.IS", "ALARK.IS"
+            "HEKTS.IS", "KONTR.IS", "ASTOR.IS", "EUPWR.IS", "ALARK.IS", "ALFAS.IS"
         ],
         "ABD En Bilindik / Teknoloji (US)": [
             "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", 
@@ -111,14 +119,10 @@ with st.sidebar.expander("📋 Kişisel Varlık Seçimi ve Profiller", expanded=
     secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()))
     default_tickers = preset_options[secilen_kategori]
     
-    selected_tickers = st.multiselect("Takip Edilecek Varlıklar", default_tickers, default=default_tickers)
-
-    st.text_input(
-        "Listene hisse ekle (Örn: GARAN.IS):", 
-        placeholder="Örn: KCHOL.IS, INTC", 
-        key="ek_hisse_input_field", 
-        on_change=hisse_ekle_callback
-    )
+    # Kullanıcının eklediği özel hisselerin her zaman multiselect seçeneklerinde ve seçili gelmesini sağla
+    tum_secenekler = list(set(default_tickers + st.session_state.user_tickers))
+    
+    selected_tickers = st.multiselect("Takip Edilecek Varlıklar", tum_secenekler, default=st.session_state.user_tickers)
 
     if st.button("🔄 Kişisel Listemi Varsayılana Sıfırla"):
         st.session_state.user_tickers = VARSAYILAN_TICKERS.copy()
