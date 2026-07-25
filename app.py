@@ -10,7 +10,20 @@ import firebase_admin
 from datetime import datetime
 from firebase_admin import credentials
 from firebase_admin import firestore
+import json
 
+if not firebase_admin._apps:
+    if "firebase" in st.secrets:
+        # Streamlit Cloud (Secrets) üzerinden bağlan
+        cred_dict = dict(st.secrets["firebase"])
+        cred = credentials.Certificate(cred_dict)
+    else:
+        # Lokal ortam (firebase_key.json dosyası üzerinden)
+        cred = credentials.Certificate('firebase_key.json')
+        
+    firebase_admin.initialize_app(cred)
+
+db = firestore.client()
 # --- 1. SAYFA YAPILANDIRMASI VE STİL ---
 st.set_page_config(
     page_title="Hibrit Portföy Komuta Merkezi",
