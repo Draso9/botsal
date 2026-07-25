@@ -113,11 +113,15 @@ preset_options = {
     "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
 }
 
+# Dinamik Havuz Oluşturma (Özel eklenenler dahil tüm varlıkları havuza toplar)
 tum_varliklar_havuzu = []
 for varliklar in preset_options.values():
     tum_varliklar_havuzu.extend(varliklar)
-tum_varliklar_havuzu = list(set(tum_varliklar_havuzu))
+# Eğer session_state'de custom_tickers güncellendiyse onları da ekleyelim
+if "custom_tickers" in st.session_state:
+    tum_varliklar_havuzu.extend(st.session_state.custom_tickers)
 
+tum_varliklar_havuzu = list(set(tum_varliklar_havuzu))
 # --- 3. KENAR ÇUBUĞU ---
 st.sidebar.header("⚙️ Kontrol Paneli")
 
@@ -149,33 +153,46 @@ def kategori_degisti():
     st.session_state.secilen_varliklar_multiselect = preset_options[secili_kategori]
 
 with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
-    # Kullanıcının rahatça ekleyebilmesi için metin kutusu ve yanına buton ekliyoruz
     yeni_hisse_input = st.text_input("Yeni Hisse / Varlık Ekle:", placeholder="Örn: INTC, ALFAS.IS", key="ek_hisse_input_field")
     
     if st.button("➕ Listeye Ekle"):
         if yeni_hisse_input.strip():
             eklenenler = [h.strip().upper() for h in yeni_hisse_input.replace(",", " ").split() if h.strip()]
             yeni_eklendi = False
+            
             for h in eklenenler:
+                # 1. custom_tickers listesine ekle
                 if h not in st.session_state.custom_tickers:
                     st.session_state.custom_tickers.append(h)
                     yeni_eklendi = True
+                
+                # 2. Eğer havuzda yoksa genel havuza da ekle ki multiselect tanısın
+                if h not in tum_varliklar_havuzu:
+                    tum_varliklar_havuzu.append(h)
             
             if yeni_eklendi:
                 dosyaya_ticker_yaz(st.session_state.custom_tickers)
-                # Multiselect listesini güncelle
+                
+                # 3. Multiselect aktif seçimlerine (kırmızı seçili alan) otomatik dahil et
                 if "secilen_varliklar_multiselect" in st.session_state:
                     for h in eklenenler:
                         if h not in st.session_state.secilen_varliklar_multiselect:
                             st.session_state.secilen_varliklar_multiselect.append(h)
-                st.success(f"Eklendi: {', '.join(eklenenler)}")
+                
+                st.success(f"Eklendi ve seçildi: {', '.join(eklenenler)}")
                 st.rerun()
             else:
                 st.warning("Bu varlık(lar) zaten listenizde mevcut.")
 
     secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()), key="profil_secim_kutusu", on_change=kategori_degisti)
-    selected_tickers = st.multiselect("Takip Edilecek Varlıklar", options=tum_varliklar_havuzu, default=preset_options[secilen_kategori] if "secilen_varliklar_multiselect" not in st.session_state else None, key="secilen_varliklar_multiselect")
-
+    
+    # Multiselect bileşeni artık güncel havuzu ve session state seçimlerini doğrudan kullanacak
+    selected_tickers = st.multiselect(
+        "Takip Edilecek Varlıklar", 
+        options=tum_varliklar_havuzu, 
+        default=preset_options[secilen_kategori] if "secilen_varliklar_multiselect" not in st.session_state else None, 
+        key="secilen_varliklar_multiselect"
+    )
     if st.button("🔄 Kendi Listemi Varsayılana Sıfırla"):
         st.session_state.custom_tickers = VARSAYILAN_TICKERS.copy()
         dosyaya_ticker_yaz(VARSAYILAN_TICKERS)
