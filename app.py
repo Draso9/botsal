@@ -149,7 +149,30 @@ def kategori_degisti():
     st.session_state.secilen_varliklar_multiselect = preset_options[secili_kategori]
 
 with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
-    st.text_input("Yeni Hisse / Varlık Ekle:", placeholder="Örn: INTC, ALFAS.IS", key="ek_hisse_input_field", on_change=hisse_ekle_callback)
+    # Kullanıcının rahatça ekleyebilmesi için metin kutusu ve yanına buton ekliyoruz
+    yeni_hisse_input = st.text_input("Yeni Hisse / Varlık Ekle:", placeholder="Örn: INTC, ALFAS.IS", key="ek_hisse_input_field")
+    
+    if st.button("➕ Listeye Ekle"):
+        if yeni_hisse_input.strip():
+            eklenenler = [h.strip().upper() for h in yeni_hisse_input.replace(",", " ").split() if h.strip()]
+            yeni_eklendi = False
+            for h in eklenenler:
+                if h not in st.session_state.custom_tickers:
+                    st.session_state.custom_tickers.append(h)
+                    yeni_eklendi = True
+            
+            if yeni_eklendi:
+                dosyaya_ticker_yaz(st.session_state.custom_tickers)
+                # Multiselect listesini güncelle
+                if "secilen_varliklar_multiselect" in st.session_state:
+                    for h in eklenenler:
+                        if h not in st.session_state.secilen_varliklar_multiselect:
+                            st.session_state.secilen_varliklar_multiselect.append(h)
+                st.success(f"Eklendi: {', '.join(eklenenler)}")
+                st.rerun()
+            else:
+                st.warning("Bu varlık(lar) zaten listenizde mevcut.")
+
     secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()), key="profil_secim_kutusu", on_change=kategori_degisti)
     selected_tickers = st.multiselect("Takip Edilecek Varlıklar", options=tum_varliklar_havuzu, default=preset_options[secilen_kategori] if "secilen_varliklar_multiselect" not in st.session_state else None, key="secilen_varliklar_multiselect")
 
