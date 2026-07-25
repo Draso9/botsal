@@ -103,11 +103,13 @@ authentication_status = st.session_state.get('authentication_status')
 username = st.session_state.get('username')
 
 # --- KONTROL MEKANİZMASI ---
+    # --- EĞER GİRİŞ BAŞARILIYSA ANA TERMİNALİ ÇALIŞTIR ---
 if authentication_status:
-    # --- GİRİŞ BAŞARILIYSA ---
-    authenticator.logout('Çıkış Yap', 'sidebar')
-    st.sidebar.write(f"Hoş geldin, **{name}**")
-
+    # Sidebar elemanlarını tek bir blokta toplayarak mükerrerliği önlüyoruz
+    with st.sidebar:
+        st.write(f"Hoş geldin, **{name}**")
+        authenticator.logout('Çıkış Yap', 'sidebar', key='unique_logout_btn')
+        st.markdown("---")
     # --- DOSYA / YEREL HAFIZA FONKSİYONLARI ---
     TICKER_DOSYASI = "custom_tickers.txt"
     VARSAYILAN_TICKERS = ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"]
