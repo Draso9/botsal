@@ -12,16 +12,20 @@ from firebase_admin import credentials
 from firebase_admin import firestore
 import json
 
+# --- GÜVENLİ FİREBASE BAĞLANTISI (LOKAL & BULUT UYUMLU) ---
 if not firebase_admin._apps:
-    if "firebase" in st.secrets:
-        # Streamlit Cloud (Secrets) üzerinden bağlan
-        cred_dict = dict(st.secrets["firebase"])
-        cred = credentials.Certificate(cred_dict)
-    else:
-        # Lokal ortam (firebase_key.json dosyası üzerinden)
+    try:
+        # Önce lokaldeki dosyayı dener
         cred = credentials.Certificate('firebase_key.json')
-        
-    firebase_admin.initialize_app(cred)
+        firebase_admin.initialize_app(cred)
+    except Exception:
+        # Dosya yoksa Streamlit Cloud secrets yapısını kullanır
+        if "firebase" in st.secrets:
+            cred_dict = dict(st.secrets["firebase"])
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
+        else:
+            st.error("Firebase kimlik bilgileri bulunamadı! Lütfen 'firebase_key.json' dosyasını ekleyin veya Streamlit Secrets ayarlarını yapın.")
 
 db = firestore.client()
 # --- 1. SAYFA YAPILANDIRMASI VE STİL ---
