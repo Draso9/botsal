@@ -12,21 +12,7 @@ from firebase_admin import credentials
 from firebase_admin import firestore
 import json
 
-# --- EĞER GİRİŞ BAŞARILIYSA ANA TERMİNALİ ÇALIŞTIR ---
-if authentication_status:
-    # Sidebar başlığı ve tamamen bizim kontrolümüzde olan tekil çıkış butonu
-    st.sidebar.write(f"Hoş geldin, **{name}**")
-    
-    if st.sidebar.button("🚪 Oturumu Kapat", use_container_width=True):
-        st.session_state['authentication_status'] = None
-        st.session_state['username'] = None
-        st.session_state['name'] = None
-        st.rerun()
-        
-    st.sidebar.markdown("---")
-        
-    st.sidebar.markdown("---")
-# --- 1. SAYFA YAPILANDIRMASI VE STİL ---
+# --- 1. SAYFA YAPILANDIRMASI VE STİL (EN BAŞTA OLMALI) ---
 st.set_page_config(
     page_title="Hibrit Portföy Komuta Merkezi",
     page_icon="📈",
@@ -52,11 +38,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. FİREBASE BAĞLANTISINI BAŞLATMA
+# 2. FİREBASE BAĞLANTISINI BAŞLATMA (LOKAL & BULUT UYUMLU)
 # ---------------------------------------------------------
 if not firebase_admin._apps:
-    cred = credentials.Certificate('firebase_key.json') 
-    firebase_admin.initialize_app(cred)
+    try:
+        cred = credentials.Certificate('firebase_key.json') 
+        firebase_admin.initialize_app(cred)
+    except Exception:
+        if "firebase" in st.secrets:
+            cred_dict = dict(st.secrets["firebase"])
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
+        else:
+            st.error("Firebase kimlik bilgileri bulunamadı!")
 
 db = firestore.client()
 
@@ -75,39 +69,46 @@ authenticator = stauth.Authenticate(
     config['cookie']['expiry_days']
 )
 
-tab_giris, tab_kayit = st.tabs(["🔐 Giriş Yap", "📝 Yeni Hesap Oluştur"])
-
-with tab_giris:
-    authenticator.login(key='Login_Form')
-
-with tab_kayit:
-    try:
-        # Önceden yetkilendirilmiş e-postaları yaml'dan çekip register_user'a gönderiyoruz
-        pre_auth_list = config.get('preauthorized', {}).get('emails', [])
-        
-        # Güncellenmiş API çağrısı
-        res = authenticator.register_user()
-        
-        if res:
-            # Yeni kullanıcı eklendiğinde yaml dosyasını güncelliyoruz
-            with open(config_dosya_yolu, 'w') as file:
-                yaml.dump(config, file, default_flow_style=False)
-            st.success('Kullanıcı kaydı başarılı! Şimdi "Giriş Yap" sekmesinden giriş yapabilirsiniz.')
-    except Exception as e:
-        st.error(f"Kayıt işleminde hata oluştu: {e}")
-
+# Oturum durumlarını güvenli bir şekilde alalım
 name = st.session_state.get('name')
 authentication_status = st.session_state.get('authentication_status')
 username = st.session_state.get('username')
 
-# --- KONTROL MEKANİZMASI ---
-    # --- EĞER GİRİŞ BAŞARILIYSA ANA TERMİNALİ ÇALIŞTIR ---
+# Eğer kullanıcı henüz giriş yapmadıysa Giriş/Kayıt ekranını göster
+if not authentication_status:
+    tab_giris, tab_kayit = st.tabs(["🔐 Giriş Yap", "📝 Yeni Hesap Oluştur"])
+
+    with tab_giris:
+        authenticator.login(key='Login_Form')
+
+    with tab_kayit:
+        try:
+            res = authenticator.register_user()
+            if res:
+                with open(config_dosya_yolu, 'w') as file:
+                    yaml.dump(config, file, default_flow_style=False)
+                st.success('Kullanıcı kaydı başarılı! Şimdi "Giriş Yap" sekmesinden giriş yapabilirsiniz.')
+        except Exception as e:
+            st.error(f"Kayıt işleminde hata oluştu: {e}")
+
+    if authentication_status == False:
+        st.error('Kullanıcı adı veya şifre hatalı. Lütfen tekrar deneyin.')
+    elif authentication_status == None:
+        st.info('Portföy terminaline erişmek için lütfen giriş yapın veya üstteki sekmeden yeni hesap oluşturun.')
+
+# --- EĞER GİRİŞ BAŞARILIYSA ANA TERMİNALİ ÇALIŞTIR ---
 if authentication_status:
-    # Sidebar elemanlarını tek bir blokta toplayarak mükerrerliği önlüyoruz
-    with st.sidebar:
-        st.write(f"Hoş geldin, **{name}**")
-        authenticator.logout('Çıkış Yap', 'sidebar', key='unique_logout_btn')
-        st.markdown("---")
+    # Sidebar elemanları ve tamamen tekil çıkış butonu (Çiftlenme sorunu giderildi)
+    st.sidebar.write(f"Hoş geldin, **{name}**")
+    
+    if st.sidebar.button("🚪 Oturumu Kapat", use_container_width=True):
+        st.session_state['authentication_status'] = None
+        st.session_state['username'] = None
+        st.session_state['name'] = None
+        st.rerun()
+        
+    st.sidebar.markdown("---")
+
     # --- DOSYA / YEREL HAFIZA FONKSİYONLARI ---
     TICKER_DOSYASI = "custom_tickers.txt"
     VARSAYILAN_TICKERS = ["AAPL", "MSFT", "TSLA", "NVDA", "THYAO.IS", "FROTO.IS", "TOASO.IS"]
@@ -492,8 +493,3 @@ if authentication_status:
 
     elif not st.session_state.tarama_durumu:
         st.info("👈 Başlamak için sol menüden kontrol panelini düzenleyebilir ve **'Piyasayı Tara'** butonuna tıklayabilirsin.")
-
-elif authentication_status == False:
-    st.error('Kullanıcı adı veya şifre hatalı. Lütfen tekrar deneyin.')
-elif authentication_status == None:
-    st.info('Portföy terminaline erişmek için lütfen giriş yapın veya üstteki sekmeden yeni hesap oluşturun.')
