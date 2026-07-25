@@ -69,15 +69,14 @@ if "boga_sayisi" not in st.session_state:
 if "alim_firsati" not in st.session_state:
     st.session_state.alim_firsati = 0
 
-# Dosyadan kalıcı listeyi yükle
 if "custom_tickers" not in st.session_state:
     st.session_state.custom_tickers = dosyadan_ticker_oku()
 
 st.title("📈 Hibrit Portföy Komuta Merkezi")
-st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Mod:** Kararlı Dosya & Tam Ölçekli Tarama Motoru")
+st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Mod:** fast_info Gerçek Fiyat Motoru")
 st.markdown("---")
 
-# --- 2. HİSSE LİSTELERİ (TAM 30 VE 100 ADET) ---
+# --- 2. HİSSE LİSTELERİ ---
 BIST_30 = [
     "AKBNK.IS", "ALARK.IS", "ASELS.IS", "ASTOR.IS", "BIMAS.IS", 
     "BRISA.IS", "CCOLA.IS", "ENKAI.IS", "EREGL.IS", "FROTO.IS", 
@@ -114,13 +113,12 @@ preset_options = {
     "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
 }
 
-# Tüm seçeneklerin olduğu dev havuz (Hata almamak için)
 tum_varliklar_havuzu = []
 for varliklar in preset_options.values():
     tum_varliklar_havuzu.extend(varliklar)
 tum_varliklar_havuzu = list(set(tum_varliklar_havuzu))
 
-# --- 3. KENAR ÇUBUĞU (KONTROL PANELİ) ---
+# --- 3. KENAR ÇUBUĞU ---
 st.sidebar.header("⚙️ Kontrol Paneli")
 
 with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
@@ -151,27 +149,9 @@ def kategori_degisti():
     st.session_state.secilen_varliklar_multiselect = preset_options[secili_kategori]
 
 with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
-    
-    st.text_input(
-        "Yeni Hisse / Varlık Ekle:", 
-        placeholder="Örn: INTC, ALFAS.IS", 
-        key="ek_hisse_input_field", 
-        on_change=hisse_ekle_callback
-    )
-
-    secilen_kategori = st.selectbox(
-        "Hızlı Tarama Profili", 
-        list(preset_options.keys()), 
-        key="profil_secim_kutusu",
-        on_change=kategori_degisti
-    )
-    
-    selected_tickers = st.multiselect(
-        "Takip Edilecek Varlıklar", 
-        options=tum_varliklar_havuzu, 
-        default=preset_options[secilen_kategori] if "secilen_varliklar_multiselect" not in st.session_state else None,
-        key="secilen_varliklar_multiselect"
-    )
+    st.text_input("Yeni Hisse / Varlık Ekle:", placeholder="Örn: INTC, ALFAS.IS", key="ek_hisse_input_field", on_change=hisse_ekle_callback)
+    secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()), key="profil_secim_kutusu", on_change=kategori_degisti)
+    selected_tickers = st.multiselect("Takip Edilecek Varlıklar", options=tum_varliklar_havuzu, default=preset_options[secilen_kategori] if "secilen_varliklar_multiselect" not in st.session_state else None, key="secilen_varliklar_multiselect")
 
     if st.button("🔄 Kendi Listemi Varsayılana Sıfırla"):
         st.session_state.custom_tickers = VARSAYILAN_TICKERS.copy()
@@ -189,7 +169,7 @@ if tarama_tetiklendi:
     if not selected_tickers:
         st.warning("Lütfen taranacak en az bir varlık seçin.")
     else:
-        with st.spinner(f"{len(selected_tickers)} adet varlık analiz ediliyor. Bu işlem (özellikle BIST 100) biraz sürebilir..."):
+        with st.spinner(f"{len(selected_tickers)} adet varlık analiz ediliyor..."):
             gecici_sonuclar = []
             gecici_ham_veriler = {}
             boga_sayisi = 0
@@ -221,30 +201,42 @@ if tarama_tetiklendi:
                         haftalik_durum = "Boğa 🟩" if haftalik_trend_pozitif else "Ayı 🟥"
     
                     df_long = stock.history(period="1y")
-                    
                     if isinstance(df_long.columns, pd.MultiIndex):
                         df_long.columns = df_long.columns.droplevel(1)
-                        
                     if df_long.empty or len(df_long) < 50:
                         continue
                         
-                    # Zaman farklarından doğan NaN verileri düzeltme (İleriye ve Geriye Dönük Doldurma)
                     df_long = df_long.ffill().bfill()
-                        
+                    close_series = df_long['Close'].dropna()
+                    if close_series.empty or len(close_series) < 2:
+                        continue
+
+                    # =========================================================================
+                    # YENİ VE KESİN FİYAT ÇÖZÜMÜ (fast_info İLE DOĞRUDAN GOOGLE FİYATI ALINIR)
+                    # =========================================================================
+                    try:
+                        # 1. Öncelik: fast_info üzerinden gerçek zamanlı/en son resmi fiyatı çek
+                        if hasattr(stock, 'fast_info'):
+                            bugun_kapanis = float(stock.fast_info.get('lastPrice', stock.fast_info.get('last_price')))
+                            onceki_kapanis = float(stock.fast_info.get('previousClose', stock.fast_info.get('previous_close')))
+                        else:
+                            raise ValueError("fast_info bulunamadı")
+                    except:
+                        # 2. Öncelik: Hata olursa pandas serisine dön
+                        bugun_kapanis = float(close_series.iloc[-1])
+                        onceki_kapanis = float(close_series.iloc[-2])
+                    
+                    # Veri tablosunun son fiyatını (iloc[-1]), teknik analiz bozulmasın diye
+                    # Google ile eşleşen 'bugun_kapanis' fiyatına zorluyoruz.
+                    df_long.iloc[-1, df_long.columns.get_loc('Close')] = bugun_kapanis
+                    # =========================================================================
+    
+                    yuzde_degisim = ((bugun_kapanis - onceki_kapanis) / onceki_kapanis) * 100 if onceki_kapanis > 0 else 0.0
+    
                     para_birimi = "TL" if ".IS" in ticker else "$"
                     is_bist = ".IS" in ticker
                     is_emtia = ticker in ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
                     
-                    close_series = df_long['Close'].dropna()
-                    if close_series.empty or len(close_series) < 2:
-                        continue
-                        
-                    # DÜZELTME: Doğrudan pandas serisinden güncel ve bir önceki kapanış verisi alınıyor (stock.info hatası giderildi)
-                    bugun_kapanis = close_series.iloc[-1]
-                    onceki_kapanis = close_series.iloc[-2]
-    
-                    yuzde_degisim = ((bugun_kapanis - onceki_kapanis) / onceki_kapanis) * 100 if onceki_kapanis > 0 else 0.0
-    
                     son_1_ay_df = df_long.tail(21)
                     hisse_1m_getiri = ((son_1_ay_df['Close'].iloc[-1] - son_1_ay_df['Close'].iloc[0]) / son_1_ay_df['Close'].iloc[0]) * 100 if not son_1_ay_df.empty else 0
                     
@@ -369,9 +361,7 @@ if tarama_tetiklendi:
 
 # --- 5. ARAYÜZÜ ÇİZ ---
 if st.session_state.tarama_durumu and st.session_state.sonuclar:
-    
     col1, col2, col3 = st.columns(3)
-    
     with col1:
         st.markdown(f"""
         <div class="kpi-card">
@@ -380,7 +370,6 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
             <div class="kpi-subtext">Aktif Takip Listesi</div>
         </div>
         """, unsafe_allow_html=True)
-        
     with col2:
         st.markdown(f"""
         <div class="kpi-card">
@@ -389,7 +378,6 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
             <div class="kpi-subtext">Uzun Vade Güçlü Yapı</div>
         </div>
         """, unsafe_allow_html=True)
-        
     with col3:
         st.markdown(f"""
         <div class="kpi-card">
@@ -401,22 +389,19 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    with st.expander("📖 Terminal Tablosu ve Sinyaller Nasıl Yorumlanmalı? (Stratejik Rehber)", expanded=False):
+    with st.expander("📖 Terminal Tablosu ve Sinyaller Nasıl Yorumlanmalı?", expanded=False):
         st.markdown("""
         <div class="info-box">
             <b>🎯 Nihai Sinyaller Ne Anlama Geliyor?</b><br>
-            • <b>KUSURSUZ ALIM 🟢:</b> Uzun vadeli trendin (200G) boğa tarafında olduğu, fiyatın Bollinger Alt Bandı'na kadar çekilip RSI göstergesinin aşırı satım bölgesinden tepki verdiği en ideal risk/ödül oranına sahip noktalardır.<br>
-            • <b>KADEMELİ ALIM 🔵:</b> Trend bozulmamıştır ancak fiyat orta vadeli bir düzeltme içindedir; parça parça (kademeli) maliyetlenmek için uygundur.<br>
-            • <b>KAR REALİZASYONU 🔴:</b> Fiyat üst banda dayanmış, RSI şişmiştir. Pozisyonda olanlar için kârı cebe koyma veya ağırlığı azaltma vaktidir.<br>
-            • <b>UZAK DUR! 🛑:</b> Hem haftalık hem uzun vadeli trend aşağı yönlüdür ve momentum zayıftır. Sermayeyi korumak adına bulaşılmamalıdır.<br><br>
-            <b>🛡️ Risk ve Lot Yönetimi:</b> Tablodaki <i>Dinamik Stop</i> seviyesi ATR (oynaklık) bazlı hesaplanır. Önerilen Lot miktarı ise sol menüde belirlediğin kasa büyüklüğü ve işlem başına risk oranına (%2) göre otomatik optimize edilir.
+            • <b>KUSURSUZ ALIM 🟢:</b> Uzun vadeli trendin (200G) boğa tarafında olduğu, fiyatın Bollinger Alt Bandı'na kadar çekilip RSI göstergesinin aşırı satım bölgesinden tepki verdiği en ideal noktalardır.<br>
+            • <b>KADEMELİ ALIM 🔵:</b> Trend bozulmamıştır ancak fiyat orta vadeli bir düzeltme içindedir; parça parça maliyetlenmek için uygundur.<br>
+            • <b>KAR REALİZASYONU 🔴:</b> Fiyat üst banda dayanmış, RSI şişmiştir.<br>
+            • <b>UZAK DUR! 🛑:</b> Hem haftalık hem uzun vadeli trend aşağı yönlüdür. Bulaşılmamalıdır.<br><br>
         </div>
         """, unsafe_allow_html=True)
     
     df_sonuc = pd.DataFrame(st.session_state.sonuclar)
-    
-    sadece_alim = st.checkbox("🎯 Sadece Alım Fırsatlarını Göster (Kusursuz / Kademeli Sinyaller)", value=False)
-    
+    sadece_alim = st.checkbox("🎯 Sadece Alım Fırsatlarını Göster", value=False)
     if sadece_alim and not df_sonuc.empty:
         df_sonuc = df_sonuc[df_sonuc['Nihai Sinyal'].str.contains("KUSURSUZ ALIM|KADEMELİ ALIM", case=False, na=False)]
     
@@ -435,33 +420,19 @@ if st.session_state.tarama_durumu and st.session_state.sonuclar:
         st.dataframe(styled_df, use_container_width=True)
         
         st.markdown("---")
-        
         st.subheader("📊 Varlık Detay Analizi")
-        
         secili_grafik = st.selectbox("Grafiğini incelemek istediğiniz varlığı seçin:", [s["Varlık"] for s in st.session_state.sonuclar])
-        
         aktif_ticker_anahtari = "GC=F" if "Ons Altın" in secili_grafik else secili_grafik
         
         if aktif_ticker_anahtari in st.session_state.ham_veriler:
             grafik_verisi = st.session_state.ham_veriler[aktif_ticker_anahtari]
-            
-            tab1, tab2, tab3 = st.tabs(["📉 Fiyat Hareketi (1 Yıl)", "📊 İşlem Hacmi", "⚡ RSI (Göreceli Güç Endeksi)"])
-            
+            tab1, tab2, tab3 = st.tabs(["📉 Fiyat Hareketi (1 Yıl)", "📊 İşlem Hacmi", "⚡ RSI"])
             with tab1:
-                st.line_chart(
-                    grafik_verisi[['Close', 'EMA_9', 'EMA_21']], 
-                    use_container_width=True, 
-                    color=["#00FF88", "#FF5555", "#FFB300"]
-                )
-                st.caption("🟢 Fiyat | 🔴 EMA-9 (Kısa Vade) | 🟠 EMA-21 (Orta Vade)")
-                
+                st.line_chart(grafik_verisi[['Close', 'EMA_9', 'EMA_21']], use_container_width=True, color=["#00FF88", "#FF5555", "#FFB300"])
             with tab2:
                 st.bar_chart(grafik_verisi['Volume'], use_container_width=True, color="#3498db")
-                
             with tab3:
-                temiz_rsi = grafik_verisi['RSI'].dropna()
-                st.line_chart(temiz_rsi, use_container_width=True, color="#FF5555")
-                st.caption("RSI 70 Üzeri: Aşırı Alım | RSI 30 Altı: Aşırı Satım")
+                st.line_chart(grafik_verisi['RSI'].dropna(), use_container_width=True, color="#FF5555")
 
 elif not st.session_state.tarama_durumu:
     st.info("👈 Başlamak için sol menüden kontrol panelini düzenleyebilir ve **'Piyasayı Tara'** butonuna tıklayabilirsin.")
