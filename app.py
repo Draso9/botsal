@@ -57,25 +57,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- SESSION STATE BAŞLATMA ---
-if "tarama_durumu" not in st.session_state:
-    st.session_state.tarama_durumu = False
-if "sonuclar" not in st.session_state:
-    st.session_state.sonuclar = []
-if "ham_veriler" not in st.session_state:
-    st.session_state.ham_veriler = {}
-if "boga_sayisi" not in st.session_state:
-    st.session_state.boga_sayisi = 0
-if "alim_firsati" not in st.session_state:
-    st.session_state.alim_firsati = 0
-
-if "custom_tickers" not in st.session_state:
-    st.session_state.custom_tickers = dosyadan_ticker_oku()
-
-st.title("📈 Hibrit Portföy Komuta Merkezi")
-st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Mod:** fast_info Gerçek Fiyat Motoru")
-st.markdown("---")
-
 # --- 2. HİSSE LİSTELERİ ---
 BIST_30 = [
     "AKBNK.IS", "ALARK.IS", "ASELS.IS", "ASTOR.IS", "BIMAS.IS", 
@@ -105,20 +86,83 @@ ABD_HİSSELERİ = [
     "PG", "UNH", "JNJ", "XOM", "CVX", "KO", "PEP", "COST", "MCD", "WMT"
 ]
 
-preset_options = {
-    "Kendi Listem": st.session_state.custom_tickers,
-    "BIST 30 (Tam Seçki)": BIST_30,
-    "BIST 100 (Tam Seçki)": BIST_100,
-    "ABD 30 Büyük Teknoloji/Değer": ABD_HİSSELERİ,
-    "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
-}
+# --- SESSION STATE BAŞLATMA ---
+if "tarama_durumu" not in st.session_state:
+    st.session_state.tarama_durumu = False
+if "sonuclar" not in st.session_state:
+    st.session_state.sonuclar = []
+if "ham_veriler" not in st.session_state:
+    st.session_state.ham_veriler = {}
+if "boga_sayisi" not in st.session_state:
+    st.session_state.boga_sayisi = 0
+if "alim_firsati" not in st.session_state:
+    st.session_state.alim_firsati = 0
 
-# Tüm varlıkların havuzu
+if "custom_tickers" not in st.session_state:
+    st.session_state.custom_tickers = dosyadan_ticker_oku()
+
+def get_preset_options():
+    return {
+        "Kendi Listem": st.session_state.custom_tickers,
+        "BIST 30 (Tam Seçki)": BIST_30,
+        "BIST 100 (Tam Seçki)": BIST_100,
+        "ABD 30 Büyük Teknoloji/Değer": ABD_HİSSELERİ,
+        "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
+    }
+
+# Multiselect ve Seçim Kutusu için State Tanımları
+if "profil_secim_kutusu" not in st.session_state:
+    st.session_state.profil_secim_kutusu = "Kendi Listem"
+if "secilen_varliklar_multiselect" not in st.session_state:
+    st.session_state.secilen_varliklar_multiselect = st.session_state.custom_tickers.copy()
+if "ek_hisse_input_field" not in st.session_state:
+    st.session_state.ek_hisse_input_field = ""
+
+# --- CALLBACK (GERİ ÇAĞIRMA) FONKSİYONLARI ---
+# Bu fonksiyonlar butona tıklandığı an, sayfa render edilmeden ÖNCE çalışır.
+def hisse_ekle_callback():
+    input_val = st.session_state.ek_hisse_input_field
+    if input_val and input_val.strip():
+        eklenenler = [h.strip().upper() for h in input_val.replace(",", " ").split() if h.strip()]
+        yeni_eklendi = False
+        
+        for h in eklenenler:
+            if h not in st.session_state.custom_tickers:
+                st.session_state.custom_tickers.append(h)
+                yeni_eklendi = True
+                
+        if yeni_eklendi:
+            dosyaya_ticker_yaz(st.session_state.custom_tickers)
+            
+        # Profili zorla Kendi Listem'e çek
+        st.session_state.profil_secim_kutusu = "Kendi Listem"
+        # Multiselect kutusunun içeriğini anında kendi listemizin tam haliyle değiştir
+        st.session_state.secilen_varliklar_multiselect = st.session_state.custom_tickers.copy()
+        
+        # İşlem bitince arama çubuğunu temizle
+        st.session_state.ek_hisse_input_field = ""
+
+def kategori_degisti_callback():
+    secili = st.session_state.profil_secim_kutusu
+    po = get_preset_options()
+    st.session_state.secilen_varliklar_multiselect = po[secili].copy()
+
+def listeyi_sifirla_callback():
+    st.session_state.custom_tickers = VARSAYILAN_TICKERS.copy()
+    dosyaya_ticker_yaz(VARSAYILAN_TICKERS)
+    st.session_state.profil_secim_kutusu = "Kendi Listem"
+    st.session_state.secilen_varliklar_multiselect = VARSAYILAN_TICKERS.copy()
+
+# Dinamik Havuz (Varlıkların eklendiğinde seçeneklerde çıkması için)
+preset_options = get_preset_options()
 tum_varliklar_havuzu = []
 for varliklar in preset_options.values():
     tum_varliklar_havuzu.extend(varliklar)
-tum_varliklar_havuzu.extend(st.session_state.custom_tickers)
 tum_varliklar_havuzu = list(set(tum_varliklar_havuzu))
+
+st.title("📈 Hibrit Portföy Komuta Merkezi")
+st.markdown(f"**Tarama Zamanı:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} | **Mod:** fast_info Gerçek Fiyat Motoru")
+st.markdown("---")
 
 # --- 3. KENAR ÇUBUĞU ---
 st.sidebar.header("⚙️ Kontrol Paneli")
@@ -129,44 +173,25 @@ with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
     risk_orani = st.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
 
 with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
-    yeni_hisse_input = st.text_input("Yeni Hisse / Varlık Ekle:", placeholder="Örn: INTC, ALFAS.IS", key="ek_hisse_input_field")
+    # Text input'un State ile bağlanması
+    st.text_input("Yeni Hisse / Varlık Ekle:", placeholder="Örn: INTC, ALFAS.IS", key="ek_hisse_input_field")
     
-    if st.button("➕ Listeye Ekle"):
-        if yeni_hisse_input.strip():
-            eklenenler = [h.strip().upper() for h in yeni_hisse_input.replace(",", " ").split() if h.strip()]
-            yeni_eklendi = False
-            
-            for h in eklenenler:
-                if h not in st.session_state.custom_tickers:
-                    st.session_state.custom_tickers.append(h)
-                    yeni_eklendi = True
-                if h not in tum_varliklar_havuzu:
-                    tum_varliklar_havuzu.append(h)
-            
-            if yeni_eklendi:
-                dosyaya_ticker_yaz(st.session_state.custom_tickers)
-                st.success(f"Eklendi: {', '.join(eklenenler)}")
-                st.rerun()
-            else:
-                st.warning("Bu varlık(lar) zaten listenizde mevcut.")
+    # Callback butona bağlandı!
+    if st.button("➕ Listeye Ekle", on_click=hisse_ekle_callback):
+        st.success("Hisse eklendi!")
 
-    secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()), key="profil_secim_kutusu")
+    # Selectbox Callback'e bağlandı
+    st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()), key="profil_secim_kutusu", on_change=kategori_degisti_callback)
     
-    # "Kendi Listem" seçildiğinde doğrudan güncel custom_tickers listesini default olarak veriyoruz
-    aktif_default_liste = st.session_state.custom_tickers if secilen_kategori == "Kendi Listem" else preset_options[secilen_kategori]
-    
+    # Multiselect tamamen arka plandaki Session State'e tabi olarak çalışıyor
     selected_tickers = st.multiselect(
         "Takip Edilecek Varlıklar", 
         options=tum_varliklar_havuzu, 
-        default=aktif_default_liste,
         key="secilen_varliklar_multiselect"
     )
 
-    if st.button("🔄 Kendi Listemi Varsayılana Sıfırla"):
-        st.session_state.custom_tickers = VARSAYILAN_TICKERS.copy()
-        dosyaya_ticker_yaz(VARSAYILAN_TICKERS)
+    if st.button("🔄 Kendi Listemi Varsayılana Sıfırla", on_click=listeyi_sifirla_callback):
         st.success("Kişisel liste sıfırlandı!")
-        st.rerun()
 
 st.sidebar.markdown("---")
 tarama_tetiklendi = st.sidebar.button("🚀 Piyasayı Tara ve Raporu Oluştur", type="primary", use_container_width=True)
