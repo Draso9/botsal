@@ -107,7 +107,7 @@ ABD_HİSSELERİ = [
 ]
 
 preset_options = {
-    "Kendi Listem (Kalıcı)": st.session_state.custom_tickers,
+    "Kendi Listem": st.session_state.custom_tickers,
     "BIST 30 (Tam Seçki)": BIST_30,
     "BIST 100 (Tam Seçki)": BIST_100,
     "ABD 30 Büyük Teknoloji/Değer": ABD_HİSSELERİ,
@@ -140,7 +140,6 @@ def hisse_ekle_callback():
         
         if yeni_eklendi:
             dosyaya_ticker_yaz(st.session_state.custom_tickers)
-            # Yeni ekleneni aktif multiselect'e de dahil et ki hemen görünsün
             if "secilen_varliklar_multiselect" in st.session_state:
                 st.session_state.secilen_varliklar_multiselect.extend([h for h in eklenenler if h not in st.session_state.secilen_varliklar_multiselect])
             st.sidebar.success(f"Eklendi ve kaydedildi: {', '.join(eklenenler)}")
@@ -148,7 +147,6 @@ def hisse_ekle_callback():
         st.session_state["ek_hisse_input_field"] = ""
 
 def kategori_degisti():
-    # Seçim kutusu değiştiği an bu fonksiyon çalışır ve alttaki tabloyu ZORLA günceller!
     secili_kategori = st.session_state.profil_secim_kutusu
     st.session_state.secilen_varliklar_multiselect = preset_options[secili_kategori]
 
@@ -161,7 +159,6 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
         on_change=hisse_ekle_callback
     )
 
-    # Kategori değiştiğinde kategori_degisti fonksiyonu tetiklenir
     secilen_kategori = st.selectbox(
         "Hızlı Tarama Profili", 
         list(preset_options.keys()), 
@@ -169,7 +166,6 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
         on_change=kategori_degisti
     )
     
-    # Multiselect artık tetikleyici sayesinde anında güncelleniyor
     selected_tickers = st.multiselect(
         "Takip Edilecek Varlıklar", 
         options=tum_varliklar_havuzu, 
@@ -180,7 +176,7 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
     if st.button("🔄 Kendi Listemi Varsayılana Sıfırla"):
         st.session_state.custom_tickers = VARSAYILAN_TICKERS.copy()
         dosyaya_ticker_yaz(VARSAYILAN_TICKERS)
-        if st.session_state.profil_secim_kutusu == "Kendi Listem (Kalıcı)":
+        if st.session_state.profil_secim_kutusu == "Kendi Listem":
             st.session_state.secilen_varliklar_multiselect = VARSAYILAN_TICKERS.copy()
         st.success("Kişisel liste sıfırlandı!")
         st.rerun()
@@ -201,9 +197,11 @@ if tarama_tetiklendi:
     
             try:
                 bist_df = yf.Ticker("XU100.IS").history(period="1mo")
+                if not bist_df.empty: bist_df = bist_df.ffill().bfill()
                 bist_getiri = ((bist_df['Close'].iloc[-1] - bist_df['Close'].iloc[0]) / bist_df['Close'].iloc[0]) * 100 if not bist_df.empty else 0
                 
                 nasdaq_df = yf.Ticker("^IXIC").history(period="1mo")
+                if not nasdaq_df.empty: nasdaq_df = nasdaq_df.ffill().bfill()
                 nasdaq_getiri = ((nasdaq_df['Close'].iloc[-1] - nasdaq_df['Close'].iloc[0]) / nasdaq_df['Close'].iloc[0]) * 100 if not nasdaq_df.empty else 0
             except:
                 bist_getiri, nasdaq_getiri = 0, 0
@@ -216,6 +214,7 @@ if tarama_tetiklendi:
                     haftalik_trend_pozitif = True
                     haftalik_durum = "Bilinmiyor"
                     if not df_weekly.empty and len(df_weekly) >= 21:
+                        df_weekly = df_weekly.ffill().bfill() # NaN temizliği
                         df_weekly['EMA_9'] = df_weekly['Close'].ewm(span=9, adjust=False).mean()
                         df_weekly['EMA_21'] = df_weekly['Close'].ewm(span=21, adjust=False).mean()
                         haftalik_trend_pozitif = df_weekly['EMA_9'].iloc[-1] > df_weekly['EMA_21'].iloc[-1]
@@ -229,14 +228,15 @@ if tarama_tetiklendi:
                     if df_long.empty or len(df_long) < 50:
                         continue
                         
+                    # YENİ: Zaman farklarından doğan NaN verileri düzeltme (İleriye ve Geriye Dönük Doldurma)
+                    df_long = df_long.ffill().bfill()
+                        
                     para_birimi = "TL" if ".IS" in ticker else "$"
                     is_bist = ".IS" in ticker
                     is_emtia = ticker in ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
                     
-                    close_series = df_long['Close'].dropna()
-                    if close_series.empty:
-                        continue
-                        
+                    close_series = df_long['Close']
+                    
                     bugun_kapanis = close_series.iloc[-1]
                     dun_kapanis = close_series.iloc[-2] if len(close_series) >= 2 else bugun_kapanis
                     
