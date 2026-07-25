@@ -214,7 +214,7 @@ if tarama_tetiklendi:
                     haftalik_trend_pozitif = True
                     haftalik_durum = "Bilinmiyor"
                     if not df_weekly.empty and len(df_weekly) >= 21:
-                        df_weekly = df_weekly.ffill().bfill() # NaN temizliği
+                        df_weekly = df_weekly.ffill().bfill()
                         df_weekly['EMA_9'] = df_weekly['Close'].ewm(span=9, adjust=False).mean()
                         df_weekly['EMA_21'] = df_weekly['Close'].ewm(span=21, adjust=False).mean()
                         haftalik_trend_pozitif = df_weekly['EMA_9'].iloc[-1] > df_weekly['EMA_21'].iloc[-1]
@@ -228,24 +228,20 @@ if tarama_tetiklendi:
                     if df_long.empty or len(df_long) < 50:
                         continue
                         
-                    # YENİ: Zaman farklarından doğan NaN verileri düzeltme (İleriye ve Geriye Dönük Doldurma)
+                    # Zaman farklarından doğan NaN verileri düzeltme (İleriye ve Geriye Dönük Doldurma)
                     df_long = df_long.ffill().bfill()
                         
                     para_birimi = "TL" if ".IS" in ticker else "$"
                     is_bist = ".IS" in ticker
                     is_emtia = ticker in ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
                     
-                    close_series = df_long['Close']
-                    
+                    close_series = df_long['Close'].dropna()
+                    if close_series.empty or len(close_series) < 2:
+                        continue
+                        
+                    # DÜZELTME: Doğrudan pandas serisinden güncel ve bir önceki kapanış verisi alınıyor (stock.info hatası giderildi)
                     bugun_kapanis = close_series.iloc[-1]
-                    dun_kapanis = close_series.iloc[-2] if len(close_series) >= 2 else bugun_kapanis
-                    
-                    try:
-                        onceki_kapanis = stock.info.get('regularMarketPreviousClose', dun_kapanis)
-                        if not onceki_kapanis or pd.isna(onceki_kapanis):
-                            onceki_kapanis = dun_kapanis
-                    except:
-                        onceki_kapanis = dun_kapanis
+                    onceki_kapanis = close_series.iloc[-2]
     
                     yuzde_degisim = ((bugun_kapanis - onceki_kapanis) / onceki_kapanis) * 100 if onceki_kapanis > 0 else 0.0
     
