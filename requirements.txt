@@ -1,4 +1,7 @@
 streamlit
-yfinance
+streamlit-authenticator
+PyYAML
 pandas
 numpy
+yfinance
+firebase-admin
