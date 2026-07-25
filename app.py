@@ -14,14 +14,16 @@ import json
 
 # --- EĞER GİRİŞ BAŞARILIYSA ANA TERMİNALİ ÇALIŞTIR ---
 if authentication_status:
-    # Sidebar'da kendi özel çıkış butonumuz ve karşılama mesajımız
+    # Sidebar başlığı ve tamamen bizim kontrolümüzde olan tekil çıkış butonu
     st.sidebar.write(f"Hoş geldin, **{name}**")
     
-    if st.sidebar.button("Çıkış Yap", type="secondary"):
+    if st.sidebar.button("🚪 Oturumu Kapat", use_container_width=True):
         st.session_state['authentication_status'] = None
-        st.session_state['name'] = None
         st.session_state['username'] = None
+        st.session_state['name'] = None
         st.rerun()
+        
+    st.sidebar.markdown("---")
         
     st.sidebar.markdown("---")
 # --- 1. SAYFA YAPILANDIRMASI VE STİL ---
