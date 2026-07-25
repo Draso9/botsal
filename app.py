@@ -113,15 +113,17 @@ preset_options = {
     "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
 }
 
-# Dinamik Havuz Oluşturma (Özel eklenenler dahil tüm varlıkları havuza toplar)
+# --- MULTİSELECT STATE SENKRONİZASYONU ---
+if "secilen_varliklar_multiselect" not in st.session_state:
+    st.session_state.secilen_varliklar_multiselect = preset_options["Kendi Listem"].copy()
+
+# Dinamik Havuz Oluşturma
 tum_varliklar_havuzu = []
 for varliklar in preset_options.values():
     tum_varliklar_havuzu.extend(varliklar)
-# Eğer session_state'de custom_tickers güncellendiyse onları da ekleyelim
-if "custom_tickers" in st.session_state:
-    tum_varliklar_havuzu.extend(st.session_state.custom_tickers)
-
+tum_varliklar_havuzu.extend(st.session_state.custom_tickers)
 tum_varliklar_havuzu = list(set(tum_varliklar_havuzu))
+
 # --- 3. KENAR ÇUBUĞU ---
 st.sidebar.header("⚙️ Kontrol Paneli")
 
@@ -130,27 +132,9 @@ with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
     nasdaq_kasa = st.number_input("NASDAQ Sanal Kasa ($)", value=10000, step=1000)
     risk_orani = st.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
 
-def hisse_ekle_callback():
-    input_degeri = st.session_state.get("ek_hisse_input_field", "")
-    if input_degeri.strip():
-        eklenenler = [h.strip().upper() for h in input_degeri.replace(",", " ").split() if h.strip()]
-        yeni_eklendi = False
-        for h in eklenenler:
-            if h not in st.session_state.custom_tickers:
-                st.session_state.custom_tickers.append(h)
-                yeni_eklendi = True
-        
-        if yeni_eklendi:
-            dosyaya_ticker_yaz(st.session_state.custom_tickers)
-            if "secilen_varliklar_multiselect" in st.session_state:
-                st.session_state.secilen_varliklar_multiselect.extend([h for h in eklenenler if h not in st.session_state.secilen_varliklar_multiselect])
-            st.sidebar.success(f"Eklendi ve kaydedildi: {', '.join(eklenenler)}")
-        
-        st.session_state["ek_hisse_input_field"] = ""
-
 def kategori_degisti():
     secili_kategori = st.session_state.profil_secim_kutusu
-    st.session_state.secilen_varliklar_multiselect = preset_options[secili_kategori]
+    st.session_state.secilen_varliklar_multiselect = preset_options[secili_kategori].copy()
 
 with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
     yeni_hisse_input = st.text_input("Yeni Hisse / Varlık Ekle:", placeholder="Örn: INTC, ALFAS.IS", key="ek_hisse_input_field")
@@ -166,38 +150,45 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
                     st.session_state.custom_tickers.append(h)
                     yeni_eklendi = True
                 
-                # 2. Eğer havuzda yoksa genel havuza da ekle ki multiselect tanısın
+                # 2. Genel havuza ekle
                 if h not in tum_varliklar_havuzu:
                     tum_varliklar_havuzu.append(h)
+                
+                # 3. Multiselect (aktif seçimler) listesine anında dahil et
+                if h not in st.session_state.secilen_varliklar_multiselect:
+                    st.session_state.secilen_varliklar_multiselect.append(h)
             
             if yeni_eklendi:
                 dosyaya_ticker_yaz(st.session_state.custom_tickers)
-                
-                # 3. Multiselect aktif seçimlerine (kırmızı seçili alan) otomatik dahil et
-                if "secilen_varliklar_multiselect" in st.session_state:
-                    for h in eklenenler:
-                        if h not in st.session_state.secilen_varliklar_multiselect:
-                            st.session_state.secilen_varliklar_multiselect.append(h)
-                
                 st.success(f"Eklendi ve seçildi: {', '.join(eklenenler)}")
                 st.rerun()
             else:
-                st.warning("Bu varlık(lar) zaten listenizde mevcut.")
+                # Zaten listede olsa bile multiselect'te seçili değilse seçili hale getir
+                secilen_guncel = False
+                for h in eklenenler:
+                    if h not in st.session_state.secilen_varliklar_multiselect:
+                        st.session_state.secilen_varliklar_multiselect.append(h)
+                        secilen_guncel = True
+                
+                if secilen_guncel:
+                    st.success(f"Zaten listenizde vardı, takibe eklendi: {', '.join(eklenenler)}")
+                    st.rerun()
+                else:
+                    st.warning("Bu varlık(lar) zaten listenizde ve takipte mevcut.")
 
     secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()), key="profil_secim_kutusu", on_change=kategori_degisti)
     
-    # Multiselect bileşeni artık güncel havuzu ve session state seçimlerini doğrudan kullanacak
+    # Multiselect bileşeni doğrudan session_state'e bağlı çalışır
     selected_tickers = st.multiselect(
         "Takip Edilecek Varlıklar", 
         options=tum_varliklar_havuzu, 
-        default=preset_options[secilen_kategori] if "secilen_varliklar_multiselect" not in st.session_state else None, 
         key="secilen_varliklar_multiselect"
     )
+
     if st.button("🔄 Kendi Listemi Varsayılana Sıfırla"):
         st.session_state.custom_tickers = VARSAYILAN_TICKERS.copy()
         dosyaya_ticker_yaz(VARSAYILAN_TICKERS)
-        if st.session_state.profil_secim_kutusu == "Kendi Listem":
-            st.session_state.secilen_varliklar_multiselect = VARSAYILAN_TICKERS.copy()
+        st.session_state.secilen_varliklar_multiselect = VARSAYILAN_TICKERS.copy()
         st.success("Kişisel liste sıfırlandı!")
         st.rerun()
 
@@ -255,19 +246,15 @@ if tarama_tetiklendi:
                     # YENİ VE KESİN FİYAT ÇÖZÜMÜ (fast_info İLE DOĞRUDAN GOOGLE FİYATI ALINIR)
                     # =========================================================================
                     try:
-                        # 1. Öncelik: fast_info üzerinden gerçek zamanlı/en son resmi fiyatı çek
                         if hasattr(stock, 'fast_info'):
                             bugun_kapanis = float(stock.fast_info.get('lastPrice', stock.fast_info.get('last_price')))
                             onceki_kapanis = float(stock.fast_info.get('previousClose', stock.fast_info.get('previous_close')))
                         else:
                             raise ValueError("fast_info bulunamadı")
                     except:
-                        # 2. Öncelik: Hata olursa pandas serisine dön
                         bugun_kapanis = float(close_series.iloc[-1])
                         onceki_kapanis = float(close_series.iloc[-2])
                     
-                    # Veri tablosunun son fiyatını (iloc[-1]), teknik analiz bozulmasın diye
-                    # Google ile eşleşen 'bugun_kapanis' fiyatına zorluyoruz.
                     df_long.iloc[-1, df_long.columns.get_loc('Close')] = bugun_kapanis
                     # =========================================================================
     
