@@ -113,11 +113,7 @@ preset_options = {
     "Küresel Emtialar (Ons Altın Dahil)": ["GC=F", "SLV", "CPER", "PALL", "BZ=F"]
 }
 
-# --- MULTİSELECT STATE SENKRONİZASYONU ---
-if "secilen_varliklar_multiselect" not in st.session_state:
-    st.session_state.secilen_varliklar_multiselect = preset_options["Kendi Listem"].copy()
-
-# Dinamik Havuz Oluşturma
+# Tüm varlıkların havuzu
 tum_varliklar_havuzu = []
 for varliklar in preset_options.values():
     tum_varliklar_havuzu.extend(varliklar)
@@ -132,10 +128,6 @@ with st.sidebar.expander("💰 Kasa ve Risk Parametreleri", expanded=True):
     nasdaq_kasa = st.number_input("NASDAQ Sanal Kasa ($)", value=10000, step=1000)
     risk_orani = st.slider("İşlem Başına Risk Oranı (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100.0
 
-def kategori_degisti():
-    secili_kategori = st.session_state.profil_secim_kutusu
-    st.session_state.secilen_varliklar_multiselect = preset_options[secili_kategori].copy()
-
 with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
     yeni_hisse_input = st.text_input("Yeni Hisse / Varlık Ekle:", placeholder="Örn: INTC, ALFAS.IS", key="ek_hisse_input_field")
     
@@ -145,50 +137,34 @@ with st.sidebar.expander("📋 Varlık Seçimi ve Profiller", expanded=True):
             yeni_eklendi = False
             
             for h in eklenenler:
-                # 1. custom_tickers listesine ekle
                 if h not in st.session_state.custom_tickers:
                     st.session_state.custom_tickers.append(h)
                     yeni_eklendi = True
-                
-                # 2. Genel havuza ekle
                 if h not in tum_varliklar_havuzu:
                     tum_varliklar_havuzu.append(h)
-                
-                # 3. Multiselect (aktif seçimler) listesine anında dahil et
-                if h not in st.session_state.secilen_varliklar_multiselect:
-                    st.session_state.secilen_varliklar_multiselect.append(h)
             
             if yeni_eklendi:
                 dosyaya_ticker_yaz(st.session_state.custom_tickers)
-                st.success(f"Eklendi ve seçildi: {', '.join(eklenenler)}")
+                st.success(f"Eklendi: {', '.join(eklenenler)}")
                 st.rerun()
             else:
-                # Zaten listede olsa bile multiselect'te seçili değilse seçili hale getir
-                secilen_guncel = False
-                for h in eklenenler:
-                    if h not in st.session_state.secilen_varliklar_multiselect:
-                        st.session_state.secilen_varliklar_multiselect.append(h)
-                        secilen_guncel = True
-                
-                if secilen_guncel:
-                    st.success(f"Zaten listenizde vardı, takibe eklendi: {', '.join(eklenenler)}")
-                    st.rerun()
-                else:
-                    st.warning("Bu varlık(lar) zaten listenizde ve takipte mevcut.")
+                st.warning("Bu varlık(lar) zaten listenizde mevcut.")
 
-    secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()), key="profil_secim_kutusu", on_change=kategori_degisti)
+    secilen_kategori = st.selectbox("Hızlı Tarama Profili", list(preset_options.keys()), key="profil_secim_kutusu")
     
-    # Multiselect bileşeni doğrudan session_state'e bağlı çalışır
+    # "Kendi Listem" seçildiğinde doğrudan güncel custom_tickers listesini default olarak veriyoruz
+    aktif_default_liste = st.session_state.custom_tickers if secilen_kategori == "Kendi Listem" else preset_options[secilen_kategori]
+    
     selected_tickers = st.multiselect(
         "Takip Edilecek Varlıklar", 
         options=tum_varliklar_havuzu, 
+        default=aktif_default_liste,
         key="secilen_varliklar_multiselect"
     )
 
     if st.button("🔄 Kendi Listemi Varsayılana Sıfırla"):
         st.session_state.custom_tickers = VARSAYILAN_TICKERS.copy()
         dosyaya_ticker_yaz(VARSAYILAN_TICKERS)
-        st.session_state.secilen_varliklar_multiselect = VARSAYILAN_TICKERS.copy()
         st.success("Kişisel liste sıfırlandı!")
         st.rerun()
 
@@ -242,9 +218,6 @@ if tarama_tetiklendi:
                     if close_series.empty or len(close_series) < 2:
                         continue
 
-                    # =========================================================================
-                    # YENİ VE KESİN FİYAT ÇÖZÜMÜ (fast_info İLE DOĞRUDAN GOOGLE FİYATI ALINIR)
-                    # =========================================================================
                     try:
                         if hasattr(stock, 'fast_info'):
                             bugun_kapanis = float(stock.fast_info.get('lastPrice', stock.fast_info.get('last_price')))
@@ -256,7 +229,6 @@ if tarama_tetiklendi:
                         onceki_kapanis = float(close_series.iloc[-2])
                     
                     df_long.iloc[-1, df_long.columns.get_loc('Close')] = bugun_kapanis
-                    # =========================================================================
     
                     yuzde_degisim = ((bugun_kapanis - onceki_kapanis) / onceki_kapanis) * 100 if onceki_kapanis > 0 else 0.0
     
