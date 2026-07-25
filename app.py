@@ -12,22 +12,18 @@ from firebase_admin import credentials
 from firebase_admin import firestore
 import json
 
-# --- GÜVENLİ FİREBASE BAĞLANTISI (LOKAL & BULUT UYUMLU) ---
-if not firebase_admin._apps:
-    try:
-        # Önce lokaldeki dosyayı dener
-        cred = credentials.Certificate('firebase_key.json')
-        firebase_admin.initialize_app(cred)
-    except Exception:
-        # Dosya yoksa Streamlit Cloud secrets yapısını kullanır
-        if "firebase" in st.secrets:
-            cred_dict = dict(st.secrets["firebase"])
-            cred = credentials.Certificate(cred_dict)
-            firebase_admin.initialize_app(cred)
-        else:
-            st.error("Firebase kimlik bilgileri bulunamadı! Lütfen 'firebase_key.json' dosyasını ekleyin veya Streamlit Secrets ayarlarını yapın.")
-
-db = firestore.client()
+# --- EĞER GİRİŞ BAŞARILIYSA ANA TERMİNALİ ÇALIŞTIR ---
+if authentication_status:
+    # Sidebar'da kendi özel çıkış butonumuz ve karşılama mesajımız
+    st.sidebar.write(f"Hoş geldin, **{name}**")
+    
+    if st.sidebar.button("Çıkış Yap", type="secondary"):
+        st.session_state['authentication_status'] = None
+        st.session_state['name'] = None
+        st.session_state['username'] = None
+        st.rerun()
+        
+    st.sidebar.markdown("---")
 # --- 1. SAYFA YAPILANDIRMASI VE STİL ---
 st.set_page_config(
     page_title="Hibrit Portföy Komuta Merkezi",
